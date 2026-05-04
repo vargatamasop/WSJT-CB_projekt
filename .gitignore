@@ -19,6 +19,12 @@ Makefile
 *.ilk
 *.pdb
 /installer-output
+build-user/
+
+#AUR PKGBUILD utility
+PKGBUILD
+.SRCINFO
+aur/
 
 
 # Qt Creator / Qt project user files
@@ -50,6 +56,7 @@ Makefile
 *.ui.h
 *.qrc
 INSTALL
+.codex
 
 # CPack / packaging
 *.deb
@@ -72,3 +79,6 @@ scripts/check_callsign.py
 
 #Win
 rebuild.ps1
+
+# Local website deployment workspace
+website/

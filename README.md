@@ -8,13 +8,13 @@
 
 This document describes the code changes currently present in this fork, compared to the original WSJT-X source snapshot used as base.
 
-## Release Notes 1.1
+## Release Notes 1.2
 
-Version 1.1 is a focused refinement of WSJT-CB 1.0. This release does not try to add complexity; instead, it makes the CB-oriented workflow cleaner, more reliable, and more consistent for everyday operation.
+Version 1.2 is a focused refinement of WSJT-CB 1.0. This release does not try to add complexity; instead, it makes the CB-oriented workflow cleaner, more reliable, and more consistent for everyday operation.
 
-Compared with 1.0, version 1.1 improves the handling of CB-to-CB contacts, simplifies the interface by removing features that are less relevant to the project direction, and strengthens packaging, branding, and application identity.
+Compared with 1.0, version 1.2 improves the handling of CB-to-CB contacts, simplifies the interface by removing features that are less relevant to the project direction, and strengthens packaging, branding, and application identity.
 
-### Highlights of Version 1.1
+### Highlights of Version 1.2
 
 - Improved CB-to-CB QSO handling, especially around signal reports, free-text parsing, and final exchange messages such as `RR73` and `73`.
 - More reliable AutoSeq and logging flow during non-standard CB callsign contacts, with fewer edge-case failures and cleaner end-of-QSO progression.
@@ -25,11 +25,11 @@ Compared with 1.0, version 1.1 improves the handling of CB-to-CB contacts, simpl
 - Removed older or less relevant legacy components, including the Astronomical Data widget, ALLCALL7 filtering logic, legacy side tools, and several obsolete subprojects and documentation pieces.
 - WSJT-CB branding is now more consistent across the UI, help menu, log files, configuration names, and installer-related paths.
 - The help area has been simplified and a Telegram group entry has been added.
-- Windows packaging has been improved with a dedicated `1.1.0` installer configuration and fixes for country-file lookup in installed environments.
+- Windows packaging has been improved with a dedicated `1.2.0` installer configuration and fixes for country-file lookup in installed environments.
 
 ### Summary
 
-Version 1.1 is a maturity release. It sharpens the reliability of CB-specific operating flows, cleans up presentation and country handling, reduces legacy baggage, and delivers a more coherent WSJT-CB experience from first launch to daily use.
+Version 1.2 is a maturity release. It sharpens the reliability of CB-specific operating flows, cleans up presentation and country handling, reduces legacy baggage, and delivers a more coherent WSJT-CB experience from first launch to daily use.
 
 ## Important Note: `<...>` with Non-Standard Callsigns (FT8)
 
@@ -49,7 +49,7 @@ If your station has not yet learned the hash-to-callsign mapping (for example be
 - `widgets/mainwindow.cpp`
 - `main.cpp`
 
-## 1) CB Callsign Support (`N{1,3}L{1,2}N{1,3}`)
+## 1) CB Callsign Support (`N{1,3}L{1,2}N{1,3}` and `N{1,3}L{1,2}/L{2}`)
 
 Files:
 - `Radio.hpp`
@@ -57,13 +57,16 @@ Files:
 
 Changes:
 - Added `Radio::is_cb_callsign(QString const&)`.
+- Added `Radio::cb_country_prefix(QString const&)` so CB country lookup can use
+  only the leading numeric prefix, including compound calls such as `999ZZ/ZZ`.
 - Added CB callsign regex:
   - `^[0-9]{1,3}[A-Z]{1,2}[0-9]{1,3}$`
   - special-case extension for 4-digit unit numbers only with a 1-digit country prefix
+  - compound extension `^[0-9]{1,3}[A-Z]{1,2}/[A-Z]{2}$`
 - Extended `Radio::is_callsign(...)` so CB calls are treated as valid callsigns.
 
 Impact:
-- Callsigns like `1A1`, `26AT101`, `21AT106`, `999ZZ999`, and `1AT1000` are accepted by validation logic used by the UI and message processing flow.
+  - Callsigns like `1A1`, `26AT101`, `21AT106`, `999ZZ999`, `1AT1000`, and `999ZZ/ZZ` are accepted by validation logic used by the UI and message processing flow.
 
 Examples:
 
@@ -79,6 +82,7 @@ Examples:
 | `111TT11` | Yes | 3-digit prefix, 2 letters, 2-digit suffix |
 | `111TT999` | Yes | 3-digit prefix, 2 letters, 3-digit suffix |
 | `26AT715` | Yes | 2-digit prefix, 2 letters, 3-digit suffix |
+| `999ZZ/ZZ` | Yes | 3-digit prefix, 2 letters, slash, 2-letter suffix |
 | `26AT1000` | No | 4-digit suffix is not allowed with a 2-digit prefix |
 | `111TT1000` | No | 4-digit suffix is not allowed with a 3-digit prefix |
 | `99Z9999` | No | 4-digit suffix is not allowed with a 2-digit prefix |
@@ -91,7 +95,7 @@ Examples:
 | `12A` | No | missing numeric suffix |
 | `12ABC1` | No | 3-letter middle part is not allowed; only 1 or 2 letters are accepted |
 | `ABC123` | No | missing numeric prefix |
-| `1/AT100` | No | slash-separated compound format does not match the CB regex |
+| `1/AT100` | No | slash is only allowed as a final `/LL` suffix after the CB stem |
 
 ## 2) 11m/CB Band, UI Modes, and Default Frequencies
 
@@ -135,7 +139,7 @@ Files:
 - `widgets/displaytext.cpp`
 
 Changes:
-- Added CB country-resolution using the numeric prefix for CB callsigns matching `N{1,3}L{1,2}N{1,3}`.
+- Added CB country-resolution using the numeric prefix for CB callsigns matching `N{1,3}L{1,2}N{1,3}` and `N{1,3}L{1,2}/L{2}`.
 - Added static NNN→country map based on international CB prefix list.
 - Added lookup in `AD1CCty::lookup(...)` before standard DXCC lookup. For CB callsigns it normalizes the numeric prefix to a zero-padded `NNN`, then returns a record with `entity_name` country and `primary_prefix` `NNN`.
 - Kept fallback lookup behavior unchanged for regular non-CB callsigns.
@@ -306,7 +310,7 @@ Or use the helper script included in this repository:
 The generated package will be named like:
 
 ```text
-build-debian12/wsjtcb_1.1.0_amd64.deb
+build-debian12/wsjtcb_1.2.0_amd64.deb
 ```
 
 The repository also includes a GitHub Actions workflow at
