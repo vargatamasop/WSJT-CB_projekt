@@ -546,6 +546,8 @@ private:
   void enumerate_rigs ();
   void set_rig_invariants ();
   bool validate ();
+  bool has_valid_cb_callsign () const;
+  void update_callsign_validation_ui ();
   void fill_port_combo_box (QComboBox *);
   Frequency apply_calibration (Frequency) const;
   Frequency remove_calibration (Frequency) const;
@@ -595,6 +597,7 @@ private:
   void after_CALL3_downloaded();
   void error_during_CALL3_download (QString const& reason);
   void read_CALL3_version();
+  Q_SLOT void on_callsign_line_edit_textChanged (QString const&);
   Q_SLOT void on_udp_server_line_edit_textChanged (QString const&);
   Q_SLOT void on_udp_server_line_edit_editingFinished ();
   Q_SLOT void on_save_path_select_push_button_clicked (bool);
@@ -2085,18 +2088,12 @@ void Configuration::impl::initialize_models ()
     find_audio_devices ();
   }
   auto pal = ui_->callsign_line_edit->palette ();
-  if (my_callsign_.isEmpty ())
-    {
-      pal.setColor (QPalette::Base, "#ffccff");
-    }
-  else
-    {
-      pal.setColor (QPalette::Base, Qt::white);
-    }
+  pal.setColor (QPalette::Base, Qt::white);
   ui_->callsign_line_edit->setPalette (pal);
   ui_->grid_line_edit->setPalette (pal);
   ui_->callsign_line_edit->setText (my_callsign_);
   ui_->grid_line_edit->setText (my_grid_);
+  update_callsign_validation_ui ();
   ui_->use_dynamic_grid->setChecked(use_dynamic_grid_);
   ui_->CW_id_interval_spin_box->setValue (id_interval_);
   ui_->align_spin_box->setValue (align_steps_);
@@ -3088,8 +3085,38 @@ void Configuration::impl::set_rig_invariants ()
                                               || TransceiverFactory::basic_transceiver_name_ != rig);
 }
 
+bool Configuration::impl::has_valid_cb_callsign () const
+{
+  return Radio::is_cb_callsign (ui_->callsign_line_edit->text ());
+}
+
+void Configuration::impl::update_callsign_validation_ui ()
+{
+  auto const valid_cb = has_valid_cb_callsign ();
+  auto pal = ui_->callsign_line_edit->palette ();
+  auto const base_color = valid_cb ? QColor {Qt::white} : QColor {"#ffb3b3"};
+  pal.setColor (QPalette::Base, base_color);
+  ui_->callsign_line_edit->setPalette (pal);
+
+  if (auto * ok_button = ui_->configuration_dialog_button_box->button (QDialogButtonBox::Ok))
+    {
+      ok_button->setEnabled (valid_cb);
+    }
+}
+
 bool Configuration::impl::validate ()
 {
+  if (!has_valid_cb_callsign ())
+    {
+      update_callsign_validation_ui ();
+      find_tab (ui_->callsign_line_edit);
+      MessageBox::critical_message (
+          this,
+          tr ("Invalid callsign"),
+          tr ("My callsign must match the CB format: N{1,3}L{1,2}N{1,3} or N{1,3}L{1,2}/LL."));
+      return false;
+    }
+
   if (ui_->sound_input_combo_box->currentIndex () < 0
       && next_audio_input_device_.isNull ())
     {
@@ -4153,6 +4180,11 @@ void Configuration::impl::on_add_macro_push_button_clicked (bool /* checked */)
       next_macros_.setData (index, ui_->add_macro_line_edit->text ());
       ui_->add_macro_line_edit->clear ();
     }
+}
+
+void Configuration::impl::on_callsign_line_edit_textChanged (QString const&)
+{
+  update_callsign_validation_ui ();
 }
 
 void Configuration::impl::on_udp_server_line_edit_textChanged (QString const&)
