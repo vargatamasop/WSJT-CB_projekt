@@ -3087,7 +3087,7 @@ void Configuration::impl::set_rig_invariants ()
 
 bool Configuration::impl::has_valid_cb_callsign () const
 {
-  return Radio::is_cb_callsign (ui_->callsign_line_edit->text ());
+  return Radio::is_complete_cb_callsign (ui_->callsign_line_edit->text ());
 }
 
 void Configuration::impl::update_callsign_validation_ui ()

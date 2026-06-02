@@ -42,7 +42,7 @@ namespace Radio
     // DXCC Entity prefix used as a suffix
     QRegularExpression non_prefix_suffix {R"(\A([0-9AMPQR]|QRP|F[DF]|[AM]M|L[HT]|LGT)\z)"};
 
-    QString cb_country_prefix_impl (QString const& callsign)
+    QString complete_cb_country_prefix_impl (QString const& callsign)
     {
       auto const normalized = callsign.trimmed ().toUpper ();
       if (normalized.isEmpty ())
@@ -52,8 +52,7 @@ namespace Radio
 
       for (auto const& re : {cb_callsign_one_digit_suffix_re,
                              cb_callsign_multi_digit_suffix_re,
-                             cb_callsign_slash_suffix_re,
-                             cb_callsign_base_re})
+                             cb_callsign_slash_suffix_re})
         {
           auto const match = re.match (normalized);
           if (match.hasMatch ())
@@ -63,6 +62,20 @@ namespace Radio
         }
 
       return {};
+    }
+
+    QString cb_country_prefix_impl (QString const& callsign)
+    {
+      auto prefix = complete_cb_country_prefix_impl (callsign);
+      if (!prefix.isEmpty ())
+        {
+          return prefix;
+        }
+
+      auto const match = cb_callsign_base_re.match (callsign.trimmed ().toUpper ());
+      return match.hasMatch ()
+        ? match.captured (1).rightJustified (3, QChar {'0'})
+        : QString {};
     }
   }
 
@@ -180,6 +193,11 @@ namespace Radio
   bool is_cb_callsign (QString const& callsign)
   {
     return !cb_country_prefix (callsign).isEmpty ();
+  }
+
+  bool is_complete_cb_callsign (QString const& callsign)
+  {
+    return !complete_cb_country_prefix_impl (callsign).isEmpty ();
   }
 
   QString cb_country_prefix (QString const& callsign)

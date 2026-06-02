@@ -3192,6 +3192,7 @@ void MainWindow::fastSink(qint64 frames)
     if(((pounce && text.contains(" CQ ") && m_config.Wait_features_enabled())
         or (m_auto && m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " "))) && !ignored
         && !filtered && !selected && ui->respondComboBox->isVisible() && ui->respondComboBox->currentText()=="CQ: First"
+        && has_complete_cb_peer (decodedtext)
         && (!(ui->actionFull_Duplex_Mode->isChecked() && m_txing))) {
                   m_bDoubleClicked=true;
                   selected = true;
@@ -3209,7 +3210,8 @@ void MainWindow::fastSink(qint64 frames)
         QString deCall;
         QString deGrid;
         decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-        if (!filtered && !ignored && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
+        if (!filtered && !ignored && has_complete_cb_peer (decodedtext)
+            && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
              (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
              (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                                                                     )) {
@@ -3246,7 +3248,7 @@ void MainWindow::fastSink(qint64 frames)
         QString deCall;
         QString deGrid;
         decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-        if (!filtered && !ignored && (
+        if (!filtered && !ignored && has_complete_cb_peer (decodedtext) && (
              (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
              (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                           )) {
@@ -3277,7 +3279,7 @@ void MainWindow::fastSink(qint64 frames)
         QString deCall;
         QString deGrid;
         decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-        if (!filtered && !ignored && (
+        if (!filtered && !ignored && has_complete_cb_peer (decodedtext) && (
              (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
              (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                           )) {
@@ -7044,6 +7046,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
         if(((pounce && text.contains(" CQ ") && m_config.Wait_features_enabled())
               or (m_auto && m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " "))) && !ignored
             && !filtered && !selected && ui->respondComboBox->isVisible() && ui->respondComboBox->currentText()=="CQ: First"
+            && has_complete_cb_peer (decodedtext0)
             && (!(ui->actionFull_Duplex_Mode->isChecked() && m_txing))) {
           m_bDoubleClicked=true;
           selected = true;
@@ -7061,7 +7064,8 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
+          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0)
+              && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7098,7 +7102,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && (
+          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0) && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7130,7 +7134,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && (
+          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0) && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7230,7 +7234,8 @@ void MainWindow::readFromStdout()                             //readFromStdout
           }
         });                                                  // UR delete for versions without alerts
 
-          if (m_bBestSPArmed && m_mode=="FT4" && CALLING == m_QSOProgress && !ignored && !filtered) {
+          if (m_bBestSPArmed && m_mode=="FT4" && CALLING == m_QSOProgress && !ignored && !filtered
+              && has_complete_cb_peer (decodedtext0)) {
             QString messagePriority=ui->decodedTextBrowser->CQPriority();
             if (messagePriority!="") {
               if (messagePriority=="New Call on Band"
@@ -7286,7 +7291,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
             } else {
                   bProcessMsgNormally=true;
             }
-            if(bProcessMsgNormally) {
+            if(bProcessMsgNormally && has_complete_cb_peer (decodedtext)) {
                   m_bDoubleClicked=true;
                   m_bAutoReply = true;
                   processMessage (decodedtext);
@@ -7483,8 +7488,45 @@ void MainWindow::readFromStdout()                             //readFromStdout
 //                  another caller and we are going to transmit within
 //                  +/- this value of the reply to another caller
 //
+bool MainWindow::has_complete_cb_peer (DecodedText const& message) const
+{
+  QString peer;
+  QString grid;
+  message.deCallAndGrid (peer, grid);
+
+  auto const is_local_call = [this] (QString const& token) {
+    auto const normalized = token.trimmed ().toUpper ();
+    return !normalized.isEmpty ()
+      && (normalized == m_config.my_callsign ().trimmed ().toUpper ()
+          || normalized == m_baseCall
+          || Radio::base_callsign (normalized) == m_baseCall);
+  };
+
+  auto const words = message.clean_string ().mid (22).remove ("<").remove (">")
+    .split (" ", SkipEmptyParts);
+  if (!message.isStandardMessage ())
+    {
+      for (int i = 1; i < words.size (); ++i)
+        {
+          if (is_local_call (words.at (i)))
+            {
+              // Free-text CB replies to our CQ can arrive as "DXCALL MYCALL".
+              peer = words.at (i - 1);
+              break;
+            }
+        }
+    }
+
+  return Radio::is_complete_cb_callsign (peer);
+}
+
 void MainWindow::auto_sequence (DecodedText const& message, unsigned start_tolerance, unsigned stop_tolerance)
 {
+  if (m_bCallingCQ && !has_complete_cb_peer (message))
+    {
+      return;
+    }
+
   auto const& message_words = message.messageWords ();
   auto is_73 = message_words.filter (QRegularExpression {"^(73|RR73)$"}).size();
   auto msg_no_hash = message.clean_string();
