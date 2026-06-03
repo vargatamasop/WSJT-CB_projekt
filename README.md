@@ -196,7 +196,7 @@ File:
 
 Changes:
 - Application name changed to:
-  - `WSJT-CB by 1AT106 - 1XZ732 - 161XZ085`
+  - `WSJT-CB by 1AT106 1XZ732 1AT1989`
 
 Impact:
 - Updated program title/identity in runtime metadata and window/application naming derived from Qt application name.

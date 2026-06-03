@@ -18,7 +18,7 @@ CAboutDlg::CAboutDlg(QWidget *parent) :
     "WSJT-CB V 1.3.0-crimson is an optimized version of the WSJT software for<br />"
     "weak-signal CB 27MHz communications.  <br /><br />"
     "&copy; 2026 by Lorenzo 1AT106, Pietro 1XZ732,  <br />"
-    "Mancausoft, 161XZ085. <br />"
+    "Mancausoft, 1AT1989. <br />"
     "WSJT-CB is based on the WSJT software <br />"
     "by Joe Taylor K1JT.<br /><br />"
     "We gratefully acknowledge contributions from:<br />"
