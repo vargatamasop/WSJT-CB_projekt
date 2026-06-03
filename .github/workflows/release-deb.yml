@@ -87,7 +87,7 @@ jobs:
           mkdir -p dist
           cpack --config build-${{ matrix.id }}/CPackConfig.cmake -G RPM
           shopt -s nullglob
-          for rpm in wsjtcb_*.rpm; do
+          for rpm in wsjtcb-*.rpm; do
             mv "$rpm" "dist/${rpm%.rpm}.rpm"
           done
           sha256sum dist/*.rpm > "dist/SHA256SUMS_RPM.txt"    
@@ -98,9 +98,9 @@ jobs:
           name: wsjtcb-${{ matrix.id }}
           path: |
             dist/*.deb
-            dist/SHA256SUMSDEB_${{ matrix.id }}.txt
+            dist/SHA256SUMS_DEB.txt
             dist/*.rpm
-            dist/SHA256SUMSRPM_${{ matrix.id }}.txt
+            dist/SHA256SUMS_RPM.txt
 
       - name: Attach assets to GitHub release
         if: github.event_name == 'release'
@@ -108,6 +108,6 @@ jobs:
         with:
           files: |
             dist/*.deb
-            dist/SHA256SUMSDEB_${{ matrix.id }}.txt
+            dist/SHA256SUMS_DEB.txt
             dist/*.rpm
-            dist/SHA256SUMSRPM_${{ matrix.id }}.txt
+            dist/SHA256SUMS_RPM.txt
