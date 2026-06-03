@@ -221,6 +221,8 @@ int main(int argc, char *argv[])
         }
 
       // now we have the application name we can open the logging and settings
+      wsjtcb_writable_location (QStandardPaths::DataLocation);
+      wsjtcb_writable_location (QStandardPaths::AppLocalDataLocation);
       WSJTXLogging lg;
       LOG_INFO (program_title (revision ()) << " - Program startup");
       MultiSettings multi_settings {parser.value (cfg_option)};
@@ -311,7 +313,7 @@ int main(int argc, char *argv[])
       }
 
       // create writeable data directory if not already there
-      auto writeable_data_dir = QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+      auto writeable_data_dir = QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)};
       if (!writeable_data_dir.mkpath ("."))
         {
           MessageBox::critical_message (nullptr, a.translate ("main", "Failed to create data directory"),

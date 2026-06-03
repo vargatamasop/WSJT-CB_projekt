@@ -1,5 +1,6 @@
 #include "WSJTXLogging.hpp"
 
+#include <algorithm>
 #include <string>
 #include <exception>
 #include <sstream>
@@ -87,22 +88,6 @@ namespace
     return path;
   }
 
-  QStringList legacy_application_names (QString const& target_name)
-  {
-    QString suffix;
-    if (target_name.startsWith (stable_application_base_name))
-      {
-        suffix = target_name.mid (QString {stable_application_base_name}.size ());
-      }
-
-    QStringList names;
-    names << QString {"WSJT-CB by 1AT106 - 1XZ732 - 161XZ085"} + suffix;
-    names << QCoreApplication::applicationName ();
-    names.removeAll (target_name);
-    names.removeDuplicates ();
-    return names;
-  }
-
   bool copy_directory (QString const& source_path, QString const& target_path)
   {
     QDir source_dir {source_path};
@@ -122,14 +107,11 @@ namespace
         auto target_file = QDir {target_path}.absoluteFilePath (entry.fileName ());
         if (entry.isDir ())
           {
-            if (!copy_directory (entry.absoluteFilePath (), target_file))
-              {
-                return false;
-              }
+            copy_directory (entry.absoluteFilePath (), target_file);
           }
-        else if (!QFileInfo::exists (target_file) && !QFile::copy (entry.absoluteFilePath (), target_file))
+        else if (!QFileInfo::exists (target_file))
           {
-            return false;
+            QFile::copy (entry.absoluteFilePath (), target_file);
           }
       }
     return true;
@@ -137,28 +119,20 @@ namespace
 
   void migrate_legacy_app_local_data (QString const& target_path)
   {
+    QDir target_parent {QDir::cleanPath (QDir {target_path}.absoluteFilePath (".."))};
     QFileInfo target_info {target_path};
-    if (target_info.exists ())
-      {
-        return;
-      }
+    auto legacy_dirs = target_parent.entryInfoList (QStringList {QString {stable_application_base_name} + "*"},
+                                                    QDir::Dirs | QDir::NoDotAndDotDot);
+    std::sort (legacy_dirs.begin (), legacy_dirs.end (), [] (QFileInfo const& lhs, QFileInfo const& rhs) {
+        return lhs.lastModified () > rhs.lastModified ();
+      });
 
-    QFileInfo selected_dir;
-    auto target_name = stable_application_name ();
-    for (auto const& legacy_name: legacy_application_names (target_name))
+    for (auto const& legacy_info: legacy_dirs)
       {
-        auto legacy_path = target_info.dir ().absoluteFilePath (legacy_name);
-        QFileInfo legacy_info {legacy_path};
-        if (legacy_info.exists () && legacy_info.isDir ()
-            && (!selected_dir.exists () || legacy_info.lastModified () > selected_dir.lastModified ()))
+        if (legacy_info.absoluteFilePath () != target_info.absoluteFilePath ())
           {
-            selected_dir = legacy_info;
+            copy_directory (legacy_info.absoluteFilePath (), target_path);
           }
-      }
-
-    if (selected_dir.exists ())
-      {
-        copy_directory (selected_dir.absoluteFilePath (), target_path);
       }
   }
 
@@ -288,7 +262,9 @@ WSJTXLogging::WSJTXLogging ()
     (
      logging::make_exception_handler<std::runtime_error, std::logic_error> (exception_handler {})
      );
- 
+
+  migrate_legacy_app_local_data (stable_writable_location (QStandardPaths::AppLocalDataLocation));
+
   // Check for a user-defined logging configuration settings file.
   QFile log_config {QStandardPaths::locate (QStandardPaths::ConfigLocation, "wsjtcb_log_config.ini")};
   if (log_config.exists () && log_config.open (QFile::ReadOnly) && log_config.isReadable ())
