@@ -1,0 +1,294 @@
+name: Test Debian 13 Package Compatibility
+
+on:
+  workflow_run:
+    workflows:
+      - Build Linux Packages
+    types:
+      - completed
+    branches:
+      - 1.3--amethyst
+
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "Run ID of the Build Linux Packages workflow that produced wsjtcb-debian13"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  test-debian13-deb-on-distros:
+    name: Install Debian 13 package on ${{ matrix.label }}
+
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == '1.3--amethyst'
+        )
+      }}
+
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: debian12
+            label: Debian 12
+            image: debian:12
+
+          - id: debian13
+            label: Debian 13
+            image: debian:13
+
+          - id: lmde7
+            label: LMDE 7
+            image: linuxmintd/lmde7-amd64
+
+          - id: ubuntu2204
+            label: Ubuntu 22.04
+            image: ubuntu:22.04
+
+          - id: ubuntu2404
+            label: Ubuntu 24.04
+            image: ubuntu:24.04
+
+          - id: ubuntu2604
+            label: Ubuntu 26.04
+            image: ubuntu:26.04
+
+          - id: mint213
+            label: Linux Mint 21.3
+            image: linuxmintd/mint21.3-amd64
+
+    env:
+      BUILD_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.build_run_id }}
+      PACKAGE_ARTIFACT_NAME: wsjtcb-debian13
+      PACKAGE_NAME: wsjtcb
+      EXECUTABLE_NAME: wsjtcb
+
+    steps:
+      - name: Download Debian 13 package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_ARTIFACT_NAME }}
+          path: artifacts
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN_ID }}
+
+      - name: Select Debian 13 DEB package
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob globstar
+
+          echo "Downloaded files:"
+          find artifacts -maxdepth 5 -type f -print | sort
+
+          debs=(artifacts/**/*.deb)
+
+          if (( ${#debs[@]} == 0 )); then
+            echo "No .deb package found in artifact ${PACKAGE_ARTIFACT_NAME}" >&2
+            exit 1
+          fi
+
+          if (( ${#debs[@]} > 1 )); then
+            echo "More than one .deb found; using the first:"
+            printf '  %s\n' "${debs[@]}"
+          fi
+
+          mkdir -p test-package
+          cp "${debs[0]}" test-package/wsjtcb-debian13.deb
+
+          echo "Selected package:"
+          ls -lh test-package/wsjtcb-debian13.deb
+
+          echo "Package metadata:"
+          dpkg-deb --info test-package/wsjtcb-debian13.deb
+          dpkg-deb --field test-package/wsjtcb-debian13.deb Package Version Architecture Depends || true
+
+      - name: Install and test on ${{ matrix.label }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            --name "wsjtcb-test-${{ matrix.id }}" \
+            --volume "$PWD/test-package:/pkg:ro" \
+            --env DEBIAN_FRONTEND=noninteractive \
+            --env PACKAGE_NAME="${PACKAGE_NAME}" \
+            --env EXECUTABLE_NAME="${EXECUTABLE_NAME}" \
+            "${{ matrix.image }}" \
+            bash -lc '
+              set -euo pipefail
+
+              echo "Container OS:"
+              cat /etc/os-release || true
+
+              echo
+              echo "Updating APT indexes..."
+              apt-get update
+
+              echo
+              echo "Installing GUI test harness..."
+              apt-get install -y --no-install-recommends \
+                ca-certificates \
+                coreutils \
+                file \
+                findutils \
+                procps \
+                xz-utils \
+                xvfb \
+                xauth \
+                x11-utils \
+                dbus-x11
+
+              echo
+              echo "Installing Debian 13-built WSJT-CB package..."
+              apt-get install -y --no-install-recommends /pkg/wsjtcb-debian13.deb
+
+              echo
+              echo "Checking package installation status..."
+              dpkg-query -W -f="${binary:Package} ${Version} ${Architecture} ${db:Status-Abbrev}\n" "${PACKAGE_NAME}"
+
+              installed_status="$(dpkg-query -W -f="${db:Status-Status}" "${PACKAGE_NAME}")"
+
+              if [ "${installed_status}" != "installed" ]; then
+                echo "Package ${PACKAGE_NAME} is not correctly installed." >&2
+                exit 1
+              fi
+
+              echo
+              echo "Checking APT dependency consistency..."
+              apt-get check
+
+              echo
+              echo "Listing installed package files..."
+              dpkg -L "${PACKAGE_NAME}" | sort
+
+              echo
+              echo "Checking executable..."
+              executable="$(command -v "${EXECUTABLE_NAME}" || true)"
+
+              if [ -z "${executable}" ]; then
+                echo "Executable ${EXECUTABLE_NAME} was not found in PATH." >&2
+                exit 1
+              fi
+
+              echo "Executable found at: ${executable}"
+              file "${executable}"
+
+              echo
+              echo "Checking shared libraries..."
+              if file "${executable}" | grep -q "ELF"; then
+                ldd "${executable}" | tee /tmp/wsjtcb-ldd.txt
+
+                if grep -q "not found" /tmp/wsjtcb-ldd.txt; then
+                  echo "At least one shared library dependency is missing." >&2
+                  exit 1
+                fi
+              else
+                echo "Executable is not an ELF binary; skipping ldd."
+              fi
+
+              echo
+              echo "Starting Xvfb..."
+              export DISPLAY=:99
+              export QT_QPA_PLATFORM=xcb
+              export HOME=/tmp/wsjtcb-home
+              export XDG_RUNTIME_DIR=/tmp/wsjtcb-runtime
+
+              mkdir -p "${HOME}" "${XDG_RUNTIME_DIR}"
+              chmod 700 "${XDG_RUNTIME_DIR}"
+
+              xvfb_pid=""
+              app_pid=""
+
+              cleanup() {
+                if [ -n "${app_pid}" ]; then
+                  kill "${app_pid}" 2>/dev/null || true
+                fi
+
+                if [ -n "${xvfb_pid}" ]; then
+                  kill "${xvfb_pid}" 2>/dev/null || true
+                fi
+              }
+
+              trap cleanup EXIT
+
+              Xvfb "${DISPLAY}" -screen 0 1280x1024x24 -nolisten tcp > /tmp/wsjtcb-xvfb.log 2>&1 &
+              xvfb_pid="$!"
+
+              for attempt in $(seq 1 20); do
+                if xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1; then
+                  break
+                fi
+
+                sleep 1
+              done
+
+              xdpyinfo -display "${DISPLAY}" >/dev/null
+
+              echo
+              echo "Launching ${EXECUTABLE_NAME}..."
+              "${EXECUTABLE_NAME}" > /tmp/wsjtcb-gui.log 2>&1 &
+              app_pid="$!"
+
+              found_window=0
+
+              for attempt in $(seq 1 30); do
+                if ! kill -0 "${app_pid}" 2>/dev/null; then
+                  echo "Application exited before a GUI window was detected." >&2
+                  echo
+                  echo "--- application log ---"
+                  cat /tmp/wsjtcb-gui.log || true
+                  echo
+                  echo "--- Xvfb log ---"
+                  cat /tmp/wsjtcb-xvfb.log || true
+                  exit 1
+                fi
+
+                xwininfo -root -tree > /tmp/wsjtcb-xwininfo.txt 2>/dev/null || true
+
+                child_count="$(
+                  awk "/^[[:space:]]+0x[0-9a-fA-F]+/ { count++ } END { print count + 0 }" \
+                    /tmp/wsjtcb-xwininfo.txt
+                )"
+
+                if grep -Eiq "(WSJT|WSJT-CB|wsjt|Qt|Configuration|Settings)" /tmp/wsjtcb-xwininfo.txt; then
+                  found_window=1
+                  break
+                fi
+
+                if [ "${child_count}" -gt 0 ]; then
+                  found_window=1
+                  break
+                fi
+
+                sleep 1
+              done
+
+              echo
+              echo "--- xwininfo window tree ---"
+              cat /tmp/wsjtcb-xwininfo.txt || true
+
+              if [ "${found_window}" -ne 1 ]; then
+                echo "No Qt/X11 GUI window was detected." >&2
+                echo
+                echo "--- application log ---"
+                cat /tmp/wsjtcb-gui.log || true
+                echo
+                echo "--- Xvfb log ---"
+                cat /tmp/wsjtcb-xvfb.log || true
+                exit 1
+              fi
+
+              echo
+              echo "GUI smoke test passed: an X11 window was detected."
+            '
