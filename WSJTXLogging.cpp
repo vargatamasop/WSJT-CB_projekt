@@ -19,8 +19,11 @@
 #include <boost/container/flat_map.hpp>
 
 #include <QtGlobal>
+#include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QString>
 #include <QStandardPaths>
@@ -44,6 +47,9 @@ BOOST_LOG_ATTRIBUTE_KEYWORD(channel, "Channel", std::string)
 
 namespace
 {
+  char const * stable_application_name_property = "wsjtcb.settingsApplicationName";
+  char const * stable_application_base_name = "WSJT-CB";
+
   // Top level exception handler that gets exceptions from filters and
   // formatters.
   struct exception_handler
@@ -60,6 +66,101 @@ namespace
       throw;
     }
   };
+
+  QString stable_application_name ()
+  {
+    auto app = QCoreApplication::instance ();
+    auto name = app ? app->property (stable_application_name_property).toString ().trimmed () : QString {};
+    return name.isEmpty () ? QCoreApplication::applicationName () : name;
+  }
+
+  QString stable_writable_location (QStandardPaths::StandardLocation location)
+  {
+    auto path = QStandardPaths::writableLocation (location);
+    auto stable_name = stable_application_name ();
+    auto visible_name = QCoreApplication::applicationName ();
+    QFileInfo path_info {path};
+    if (!stable_name.isEmpty () && !visible_name.isEmpty () && path_info.fileName () == visible_name)
+      {
+        return path_info.dir ().absoluteFilePath (stable_name);
+      }
+    return path;
+  }
+
+  QStringList legacy_application_names (QString const& target_name)
+  {
+    QString suffix;
+    if (target_name.startsWith (stable_application_base_name))
+      {
+        suffix = target_name.mid (QString {stable_application_base_name}.size ());
+      }
+
+    QStringList names;
+    names << QString {"WSJT-CB by 1AT106 - 1XZ732 - 161XZ085"} + suffix;
+    names << QCoreApplication::applicationName ();
+    names.removeAll (target_name);
+    names.removeDuplicates ();
+    return names;
+  }
+
+  bool copy_directory (QString const& source_path, QString const& target_path)
+  {
+    QDir source_dir {source_path};
+    if (!source_dir.exists ())
+      {
+        return false;
+      }
+
+    QDir target_dir;
+    if (!target_dir.mkpath (target_path))
+      {
+        return false;
+      }
+
+    for (auto const& entry: source_dir.entryInfoList (QDir::NoDotAndDotDot | QDir::Files | QDir::Dirs))
+      {
+        auto target_file = QDir {target_path}.absoluteFilePath (entry.fileName ());
+        if (entry.isDir ())
+          {
+            if (!copy_directory (entry.absoluteFilePath (), target_file))
+              {
+                return false;
+              }
+          }
+        else if (!QFileInfo::exists (target_file) && !QFile::copy (entry.absoluteFilePath (), target_file))
+          {
+            return false;
+          }
+      }
+    return true;
+  }
+
+  void migrate_legacy_app_local_data (QString const& target_path)
+  {
+    QFileInfo target_info {target_path};
+    if (target_info.exists ())
+      {
+        return;
+      }
+
+    QFileInfo selected_dir;
+    auto target_name = stable_application_name ();
+    for (auto const& legacy_name: legacy_application_names (target_name))
+      {
+        auto legacy_path = target_info.dir ().absoluteFilePath (legacy_name);
+        QFileInfo legacy_info {legacy_path};
+        if (legacy_info.exists () && legacy_info.isDir ()
+            && (!selected_dir.exists () || legacy_info.lastModified () > selected_dir.lastModified ()))
+          {
+            selected_dir = legacy_info;
+          }
+      }
+
+    if (selected_dir.exists ())
+      {
+        copy_directory (selected_dir.absoluteFilePath (), target_path);
+      }
+  }
 
   // Reroute Qt messages to the system logger
   void qt_log_handler (QtMsgType type, QMessageLogContext const& context, QString const& msg)
@@ -115,7 +216,9 @@ namespace
     //
 
     // Default log file location.
-    QDir app_data {QStandardPaths::writableLocation (QStandardPaths::AppLocalDataLocation)};
+    QDir app_data {stable_writable_location (QStandardPaths::AppLocalDataLocation)};
+    migrate_legacy_app_local_data (app_data.absolutePath ());
+    app_data.mkpath (".");
     Logger::init ();          // Basic setup of attributes
 
     //
@@ -203,8 +306,8 @@ WSJTXLogging::WSJTXLogging ()
          {"CacheLocation", QStandardPaths::writableLocation (QStandardPaths::CacheLocation)},
          {"GenericCacheLocation", QStandardPaths::writableLocation (QStandardPaths::GenericCacheLocation)},
          {"GenericDataLocation", QStandardPaths::writableLocation (QStandardPaths::GenericDataLocation)},
-         {"AppDataLocation", QStandardPaths::writableLocation (QStandardPaths::AppDataLocation)},
-         {"AppLocalDataLocation", QStandardPaths::writableLocation (QStandardPaths::AppLocalDataLocation)},
+         {"AppDataLocation", stable_writable_location (QStandardPaths::AppDataLocation)},
+         {"AppLocalDataLocation", stable_writable_location (QStandardPaths::AppLocalDataLocation)},
         };
       // Parse the configration settings substituting the variable if found.
       QString new_config;
