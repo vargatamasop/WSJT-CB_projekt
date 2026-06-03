@@ -140,6 +140,7 @@ int main(int argc, char *argv[])
 
       // Override programs executable basename as application name.
       a.setApplicationName (product_name () + " by 1AT106 1XZ732 1AT1989");
+      a.setProperty ("wsjtcb.settingsApplicationName", product_name ());
       a.setApplicationVersion (version ());
 
       QCommandLineParser parser;
@@ -192,6 +193,7 @@ int main(int argc, char *argv[])
 
       // support for multiple instances running from a single installation
       bool multiple {false};
+      auto settings_application_name = a.property ("wsjtcb.settingsApplicationName").toString ();
       if (parser.isSet (rig_option) || parser.isSet (test_option))
         {
           auto temp_name = parser.value (rig_option);
@@ -204,11 +206,15 @@ int main(int argc, char *argv[])
                 }
                 
               a.setApplicationName (a.applicationName () + " - " + temp_name);
+              settings_application_name += " - " + temp_name;
+              a.setProperty ("wsjtcb.settingsApplicationName", settings_application_name);
             }
 
           if (parser.isSet (test_option))
             {
               a.setApplicationName (a.applicationName () + " - test");
+              settings_application_name += " - test";
+              a.setProperty ("wsjtcb.settingsApplicationName", settings_application_name);
             }
 
           multiple = true;
