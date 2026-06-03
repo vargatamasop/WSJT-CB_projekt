@@ -55,6 +55,7 @@ jobs:
             qttools5-dev-tools \
             libqt5serialport5-dev \
             libqt5websockets5-dev \
+            rpm \
             librpmbuild10
 
       - name: Configure
