@@ -368,7 +368,7 @@ class WorkedBefore::impl final
 public:
   impl (Configuration const * configuration)
     : configuration_ {configuration}
-    , path_ {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath (logFileName)}
+    , path_ {configuration->writeable_data_dir ().absoluteFilePath (logFileName)}
     , prefixes_ {configuration}
   {
   }
@@ -445,8 +445,11 @@ bool WorkedBefore::add (QString const& call
     {
       auto const& entity = m_->prefixes_.lookup (call);
       QFile file {m_->path_};
+      QDir {}.mkpath (QFileInfo {file}.absolutePath ());
       if (!file.open(QIODevice::Text | QIODevice::Append))
         {
+          LOG_ERROR ("Error opening ADIF log file for append: " << file.fileName ()
+                     << " - " << file.errorString ());
           return false;
         }
       else
