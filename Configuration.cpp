@@ -1856,15 +1856,11 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
     });
   connect (ui_->udp_interfaces_combo_box, &QComboBox::currentTextChanged, this, &Configuration::impl::validate_network_interfaces);
 
-  // set up LoTW users CSV file fetching
-  connect (&lotw_users_, &LotWUsers::load_finished, [this] () {
-    ui_->LotW_CSV_fetch_push_button->setEnabled (true);
-  });
-
-  connect(&lotw_users_, &LotWUsers::progress, [this] (QString const& msg) {
-      ui_->LotW_CSV_status_label->setText(msg);
-  });
-
+  // LoTW lookup is disabled in WSJT-CB.
+  ui_->LotW_CSV_URL_line_edit->setEnabled (false);
+  ui_->LotW_CSV_fetch_push_button->setEnabled (false);
+  ui_->LotW_days_since_upload_spin_box->setEnabled (false);
+  ui_->LotW_CSV_status_label->setText (tr ("LoTW disabled in WSJT-CB"));
   lotw_users_.set_local_file_path (writeable_data_dir_.absoluteFilePath ("lotw-user-activity.csv"));
 
   // set up Cloudlog API key test button
@@ -2049,18 +2045,7 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   audio_output_device_ = next_audio_output_device_;
   audio_output_channel_ = next_audio_output_channel_;
 
-  bool fetch_if_needed {false};
-  for (auto const& item : decode_highlighing_model_.items ())
-    {
-      if (DecodeHighlightingModel::Highlight::LotW == item.type_)
-        {
-          fetch_if_needed = item.enabled_;
-          break;
-        }
-    }
-  // load the LoTW users dictionary if it exists, fetch and load if it
-  // doesn't and we need it
-  lotw_users_.load (ui_->LotW_CSV_URL_line_edit->text (), fetch_if_needed);
+  // LoTW is not used by WSJT-CB, so do not load or download its users database.
 
   transceiver_thread_ = new QThread {this};
   transceiver_thread_->start ();
@@ -3810,7 +3795,7 @@ void Configuration::impl::read_CALL3_version ()
 
 void Configuration::impl::on_LotW_CSV_fetch_push_button_clicked (bool /*checked*/)
 {
-  lotw_users_.load (ui_->LotW_CSV_URL_line_edit->text (), true, true);
+  ui_->LotW_CSV_status_label->setText (tr ("LoTW disabled in WSJT-CB"));
   ui_->LotW_CSV_fetch_push_button->setEnabled (false);
 }
 

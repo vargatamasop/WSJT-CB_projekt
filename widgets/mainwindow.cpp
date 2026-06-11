@@ -100,7 +100,6 @@
 #include "validators/MaidenheadLocatorValidator.hpp"
 #include "validators/CallsignValidator.hpp"
 #include "EqualizationToolsDialog.hpp"
-#include "Network/LotWUsers.hpp"
 #include "logbook/AD1CCty.hpp"
 #include "models/FoxLog.hpp"
 #include "models/CabrilloLog.hpp"
@@ -904,10 +903,6 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
         }
       m_equalizationToolsDialog->show ();
     });
-
-  connect (&m_config.lotw_users (), &LotWUsers::LotW_users_error, this, [this] (QString const& reason) {
-      MessageBox::warning_message (this, tr ("Error Loading LotW Users Data"), reason);
-    }, Qt::QueuedConnection);
 
   QButtonGroup* txMsgButtonGroup = new QButtonGroup {this};
   txMsgButtonGroup->addButton(ui->txrb1,1);
