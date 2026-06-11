@@ -16,8 +16,11 @@ Changes already included
 - Settings storage now uses a stable `WSJT-CB.ini` base name and migrates legacy branding-based `.ini` files automatically, so titlebar branding changes no longer reset user settings.
 - Default logging now uses the same stable application data directory and migrates the previous branding-based log directory automatically.
 - Worked-before logbook and country lookup now use the stable writable data directory, so `wsjtcb_log.adi`, `cty.dat`, and `grid.dat` stay aligned with the directory opened from the UI.
+- Windows CAT support now includes a restored OmniRig build path: OmniRig is enabled through `WSJT_WITH_OMNIRIG`, generated with Qt ActiveQt/`dumpcpp` or `dumpcpp-qt5`, and exposed again as OmniRig Rig 1 / Rig 2 in the transceiver list when building on Windows.
+- The Windows/MSYS2 build chain now builds and packages against Hamlib 4.x, verified with Hamlib 4.7.2~rc in the UCRT64 environment, so the generated installer includes the required Hamlib runtime DLLs alongside the application.
+- A repeatable Windows packaging script was added for the 1.3 build: it configures CMake/Ninja for UCRT64, enables OmniRig, stages `dist`, copies required runtime DLLs, verifies dependencies, and creates the Inno Setup installer.
 - Settings validation for "My callsign" is now CB-only: the field must match the WSJT-CB CB callsign format (e.g. `N{1,3}L{1,2}N{1,3}` or `N{1,3}L{1,2}/LL`), invalid/non-CB callsigns are highlighted in red, and the configuration cannot be saved until the value is valid.
-- Automatic on-air CQ handling now starts QSOs only with complete CB callsigns: non-CB, incomplete, and unresolved hashed replies remain visible in the received messages but are ignored by AutoSeq so CQ operation can continue normally.
+- Automatic on-air CQ/QSO handling now starts QSOs only with complete CB callsigns: non-standard, non-CB, incomplete, and unresolved hashed replies remain visible in the received messages but are ignored by AutoSeq so CQ operation can continue normally. Directed free-text CB replies that clearly match our callsign are still handled as valid QSO progress.
 
 Version 1.2.0
 

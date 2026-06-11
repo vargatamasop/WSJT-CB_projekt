@@ -145,6 +145,8 @@ option (WSJT_SOFT_KEYING "Apply a ramp to CW keying envelope to reduce transient
 option (WSJT_SKIP_MANPAGES "Skip *nix manpage generation.")
 option (WSJT_GENERATE_DOCS "Generate documentation files." ON)
 option (WSJT_ENABLE_WERROR "Treat C++ warnings as errors." OFF)
+option (WSJT_WITH_OMNIRIG "Enable OmniRig ActiveX/COM rig control integration on Windows." ON)
+option (WSJT_SKIP_BUNDLE_FIXUP "Skip CMake BundleUtilities fixup; useful for scripted MinGW/MSYS2 packaging." OFF)
 option (WSJT_RIG_NONE_CAN_SPLIT "Allow split operation with \"None\" as rig.")
 option (WSJT_TRACE_UDP "Debugging option that turns on UDP message protocol diagnostics.")
 option (WSJT_BUILD_UTILS "Build simulators and code demonstrators." OFF)
@@ -342,7 +344,7 @@ set_source_files_properties (
   lib/crc14.cpp
   PROPERTIES COMPILE_FLAGS -fpermissive)
 
-if (WIN32)
+if (WIN32 AND WSJT_WITH_OMNIRIG)
   set (wsjt_CXXSRCS
     ${wsjt_CXXSRCS}
     killbyname.cpp
@@ -352,7 +354,7 @@ if (WIN32)
     ${wsjt_qt_CXXSRCS}
     Transceiver/OmniRigTransceiver.cpp
     )
-endif (WIN32)
+endif ()
 
 set (wsjt_FSRCS
   # put module sources first in the hope that they get rebuilt before use
@@ -894,9 +896,9 @@ set_source_files_properties (lib/filbig.f90 PROPERTIES COMPILE_FLAGS "-Wno-alias
 set_property (SOURCE ${all_C_and_CXXSRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -include wsjtx_config.h")
 set_property (SOURCE ${all_C_and_CXXSRCS} APPEND PROPERTY OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/wsjtx_config.h)
 
-if (WIN32)
+if (WIN32 AND WSJT_WITH_OMNIRIG)
   # generate the OmniRig COM interface source
-  find_program (DUMPCPP dumpcpp)
+  find_program (DUMPCPP NAMES dumpcpp dumpcpp-qt5)
   if (DUMPCPP-NOTFOUND)
     message (FATAL_ERROR "dumpcpp tool not found")
   endif (DUMPCPP-NOTFOUND)
@@ -1031,8 +1033,15 @@ find_package (Qt5 COMPONENTS Widgets SerialPort Multimedia PrintSupport Sql Ling
 
 if (WIN32)
   add_definitions (-DQT_NEEDS_QTMAIN)
+  if (WSJT_WITH_OMNIRIG)
+    add_definitions (-DWSJT_WITH_OMNIRIG=1)
+  else ()
+    add_definitions (-DWSJT_WITH_OMNIRIG=0)
+  endif ()
+endif ()
+if (WIN32 AND WSJT_WITH_OMNIRIG)
   find_package (Qt5AxContainer REQUIRED)
-endif (WIN32)
+endif ()
 
 #
 # Library building setup
@@ -1057,7 +1066,7 @@ endif ()
 
 if (NOT APPLE)
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pragmas")
-  if (${OPENMP_FOUND})
+  if (OPENMP_FOUND)
     if (OpenMP_C_FLAGS)
       set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_C_FLAGS}")
       set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -1230,7 +1239,10 @@ target_link_libraries (wsjt_cxx ${LIBM_LIBRARIES} Boost::log_setup ${LIBM_LIBRAR
 # build an OpenMP variant of the Fortran library routines
 add_library (wsjt_fort STATIC ${wsjt_FSRCS})
 target_link_libraries (wsjt_fort  ${FFTW3_LIBRARIES})
-if (${OPENMP_FOUND} OR APPLE)
+if (WIN32 AND MINGW AND NOT OPENMP_FOUND)
+  target_link_libraries (wsjt_fort gomp)
+endif ()
+if (OPENMP_FOUND OR APPLE)
   add_library (wsjt_fort_omp STATIC ${wsjt_FSRCS})
   target_link_libraries (wsjt_fort_omp  ${FFTW3_LIBRARIES})
   if (OpenMP_C_FLAGS AND NOT APPLE)
@@ -1253,7 +1265,7 @@ if (${OPENMP_FOUND} OR APPLE)
       $<$<COMPILE_LANGUAGE:Fortran>:-fopenmp>   # assumes GNU style Fortran compiler
       )
   endif (APPLE)
-endif (${OPENMP_FOUND} OR APPLE)
+endif ()
 
 if(WSJT_BUILD_UTILS) 
 
@@ -1492,10 +1504,10 @@ qt5_add_resources (wsjtx_RESOURCES_RCC
   )
 
 # AX COM servers
-if (WIN32)
+if (WIN32 AND WSJT_WITH_OMNIRIG)
   include (QtAxMacros)
   wrap_ax_server (GENAXSRCS ${AXSERVERSRCS})
-endif (WIN32)
+endif ()
 
 #
 # targets dependent on Qt
@@ -1511,9 +1523,9 @@ add_library (wsjt_qt STATIC ${wsjt_qt_CXXSRCS} ${wsjt_qt_GENUISRCS} ${GENAXSRCS}
 # set wsjtx_udp exports to static variants
 target_compile_definitions (wsjt_qt PUBLIC UDP_STATIC_DEFINE)
 target_link_libraries (wsjt_qt Hamlib::Hamlib Boost::log qcp Qt5::Widgets Qt5::Network Qt5::Sql Qt5::WebSockets)
-if (WIN32)
+if (WIN32 AND WSJT_WITH_OMNIRIG)
   target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)
-endif (WIN32)
+endif ()
 
 # build a library of package Qt functionality used in Fortran utilities
 add_library (fort_qt STATIC ${fort_qt_CXXSRCS})
@@ -1532,7 +1544,7 @@ generate_version_info (jt9_VERSION_RESOURCES
   )
 
 add_executable (jt9 ${jt9_FSRCS} ${jt9_VERSION_RESOURCES})
-if (${OPENMP_FOUND} OR APPLE)
+if (OPENMP_FOUND OR APPLE)
   if (APPLE)
     # On  Mac  we don't  have  working  OpenMP  support in  the  C/C++
     # compilers so we  have to manually set the  correct linking flags
@@ -1565,9 +1577,9 @@ if (${OPENMP_FOUND} OR APPLE)
       )
   endif ()
   target_link_libraries (jt9 wsjt_fort_omp wsjt_cxx fort_qt)
-else (${OPENMP_FOUND} OR APPLE)
+else ()
   target_link_libraries (jt9 wsjt_fort wsjt_cxx fort_qt)
-endif (${OPENMP_FOUND} OR APPLE)
+endif ()
 
 if (WIN32)
   find_package (Portaudio REQUIRED)
@@ -1607,7 +1619,7 @@ set_target_properties (wsjtx PROPERTIES
   )
 
 target_include_directories (wsjtx PRIVATE ${FFTW3_INCLUDE_DIRS})
-if ((NOT ${OPENMP_FOUND}) OR APPLE)
+if ((NOT OPENMP_FOUND) OR APPLE)
   target_link_libraries (wsjtx wsjt_fort)
 else ()
   target_link_libraries (wsjtx wsjt_fort_omp)

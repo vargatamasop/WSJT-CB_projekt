@@ -140,18 +140,50 @@ if (APPLE OR WIN32)
       )
 
     set (gp_tool "objdump")	# we want MinGW tool - not MSVC (See GetPrerequisites.cmake)
+    set (fixup_ignore_items
+      ADVAPI32.dll
+      CRYPT32.dll
+      DNSAPI.dll
+      DWrite.dll
+      GDI32.dll
+      IMM32.dll
+      IPHLPAPI.DLL
+      KERNEL32.dll
+      MPR.dll
+      NETAPI32.dll
+      OLEAUT32.dll
+      RPCRT4.dll
+      SETUPAPI.dll
+      Secur32.dll
+      SHELL32.dll
+      USER32.dll
+      USERENV.dll
+      USP10.dll
+      VERSION.dll
+      WINMM.dll
+      WS2_32.dll
+      WTSAPI32.dll
+      UxTheme.dll
+      bcrypt.dll
+      comdlg32.dll
+      d3d11.dll
+      dwmapi.dll
+      dxgi.dll
+      ole32.dll
+      )
   endif (WIN32)
 
-  INSTALL (CODE "
-        get_filename_component (the_path \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${WSJT_PLUGIN_DESTINATION}\" REALPATH)
-        file (GLOB_RECURSE QTPLUGINS \"\${the_path}/*${CMAKE_SHARED_LIBRARY_SUFFIX}\")
-        include (BundleUtilities)
-        set (BU_CHMOD_BUNDLE_ITEMS ON)
-        set (gp_tool ${gp_tool})
-        # canonicalize path in install context
-        get_filename_component (the_exe ${fixup_exe} REALPATH)
-        fixup_bundle (\"\${the_exe}\" \"\${QTPLUGINS}\" \"${fixup_library_dirs}\")"
-    #COMPONENT runtime
-    )
+  if (NOT WSJT_SKIP_BUNDLE_FIXUP)
+    INSTALL (CODE "
+          get_filename_component (the_path \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${WSJT_PLUGIN_DESTINATION}\" REALPATH)
+          file (GLOB_RECURSE QTPLUGINS \"\${the_path}/*${CMAKE_SHARED_LIBRARY_SUFFIX}\")
+          include (BundleUtilities)
+          set (BU_CHMOD_BUNDLE_ITEMS ON)
+          set (gp_tool ${gp_tool})
+          # canonicalize path in install context
+          get_filename_component (the_exe ${fixup_exe} REALPATH)
+          fixup_bundle (\"\${the_exe}\" \"\${QTPLUGINS}\" \"${fixup_library_dirs}\" IGNORE_ITEM ${fixup_ignore_items})"
+      #COMPONENT runtime
+      )
+  endif ()
 endif (APPLE OR WIN32)
-
