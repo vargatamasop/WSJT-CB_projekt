@@ -103,7 +103,7 @@ namespace
   // calculate a useable and unique settings file path
   QString settings_path ()
   {
-    auto const& config_directory = QStandardPaths::writableLocation (QStandardPaths::ConfigLocation);
+    auto const& config_directory = wsjtcb_writable_location (QStandardPaths::ConfigLocation);
     QDir config_path {config_directory}; // will be "." if config_directory is empty
     if (!config_path.mkpath ("."))
       {

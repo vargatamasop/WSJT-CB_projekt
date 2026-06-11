@@ -221,6 +221,7 @@ int main(int argc, char *argv[])
         }
 
       // now we have the application name we can open the logging and settings
+      wsjtcb_writable_location (QStandardPaths::ConfigLocation);
       wsjtcb_writable_location (QStandardPaths::DataLocation);
       wsjtcb_writable_location (QStandardPaths::AppLocalDataLocation);
       WSJTXLogging lg;

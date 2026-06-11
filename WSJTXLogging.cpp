@@ -266,7 +266,13 @@ WSJTXLogging::WSJTXLogging ()
   migrate_legacy_app_local_data (stable_writable_location (QStandardPaths::AppLocalDataLocation));
 
   // Check for a user-defined logging configuration settings file.
-  QFile log_config {QStandardPaths::locate (QStandardPaths::ConfigLocation, "wsjtcb_log_config.ini")};
+  auto log_config_path = QDir {stable_writable_location (QStandardPaths::ConfigLocation)}
+    .absoluteFilePath ("wsjtcb_log_config.ini");
+  if (!QFileInfo::exists (log_config_path))
+    {
+      log_config_path = QStandardPaths::locate (QStandardPaths::ConfigLocation, "wsjtcb_log_config.ini");
+    }
+  QFile log_config {log_config_path};
   if (log_config.exists () && log_config.open (QFile::ReadOnly) && log_config.isReadable ())
     {
       QTextStream ts {&log_config};
