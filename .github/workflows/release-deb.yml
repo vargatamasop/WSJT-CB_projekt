@@ -17,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: debian13
-            label: Debian 13
-            container_image: debian:13
+          - id: ubuntu2204
+            label: Ubuntu 22.04
+            container_image: ubuntu:22.04
     container:
       image: ${{ matrix.container_image }}
 
@@ -55,8 +55,7 @@ jobs:
             qttools5-dev-tools \
             libqt5serialport5-dev \
             libqt5websockets5-dev \
-            rpm \
-            librpmbuild10
+            rpm
 
       - name: Configure
         shell: bash
