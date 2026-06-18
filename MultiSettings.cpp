@@ -7,6 +7,9 @@
 #include <QString>
 #include <QStringList>
 #include <QDir>
+#include <QDateTime>
+#include <QFile>
+#include <QFileInfo>
 #include <QFont>
 #include <QApplication>
 #include <QStandardPaths>
@@ -41,22 +44,74 @@ namespace
   char const * multi_settings_current_group_key = "CurrentMultiSettingsConfiguration";
   char const * multi_settings_current_name_key = "CurrentName";
   char const * multi_settings_place_holder_key = "MultiSettingsPlaceHolder";
+  char const * settings_application_name_property = "wsjtcb.settingsApplicationName";
+  char const * stable_settings_base_name = "WSJT-CB";
 
   QString unescape_ampersands (QString s)
   {
     return s.replace ("&&", "&");
   }
 
+  QString settings_application_name ()
+  {
+    auto name = qApp->property (settings_application_name_property).toString ().trimmed ();
+    return name.isEmpty () ? QApplication::applicationName () : name;
+  }
+
+  QStringList legacy_settings_application_names (QString const& target_name)
+  {
+    QString suffix;
+    if (target_name.startsWith (stable_settings_base_name))
+      {
+        suffix = target_name.mid (QString {stable_settings_base_name}.size ());
+      }
+
+    QStringList names;
+    names << QString {"WSJT-CB by 1AT106 - 1XZ732 - 161XZ085"} + suffix;
+    names << QApplication::applicationName ();
+    names.removeAll (target_name);
+    names.removeDuplicates ();
+    return names;
+  }
+
+  void migrate_legacy_settings_file (QDir const& config_path, QString const& target_name)
+  {
+    auto target_file = config_path.absoluteFilePath (target_name + ".ini");
+    if (QFileInfo::exists (target_file))
+      {
+        return;
+      }
+
+    QFileInfo selected_file;
+    for (auto const& legacy_name: legacy_settings_application_names (target_name))
+      {
+        auto legacy_file = config_path.absoluteFilePath (legacy_name + ".ini");
+        QFileInfo legacy_file_info {legacy_file};
+        if (legacy_file_info.exists ()
+            && (!selected_file.exists ()
+                || legacy_file_info.lastModified () > selected_file.lastModified ()))
+          {
+            selected_file = legacy_file_info;
+          }
+      }
+    if (selected_file.exists ())
+      {
+        QFile::copy (selected_file.absoluteFilePath (), target_file);
+      }
+  }
+
   // calculate a useable and unique settings file path
   QString settings_path ()
   {
-    auto const& config_directory = QStandardPaths::writableLocation (QStandardPaths::ConfigLocation);
+    auto const& config_directory = wsjtcb_writable_location (QStandardPaths::ConfigLocation);
     QDir config_path {config_directory}; // will be "." if config_directory is empty
     if (!config_path.mkpath ("."))
       {
         throw std::runtime_error {"Cannot find a usable configuration path \"" + config_path.path ().toStdString () + '"'};
       }
-    return config_path.absoluteFilePath (QApplication::applicationName () + ".ini");
+    auto name = settings_application_name ();
+    migrate_legacy_settings_file (config_path, name);
+    return config_path.absoluteFilePath (name + ".ini");
   }
 
   //

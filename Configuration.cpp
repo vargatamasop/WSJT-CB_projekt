@@ -546,6 +546,8 @@ private:
   void enumerate_rigs ();
   void set_rig_invariants ();
   bool validate ();
+  bool has_valid_cb_callsign () const;
+  void update_callsign_validation_ui ();
   void fill_port_combo_box (QComboBox *);
   Frequency apply_calibration (Frequency) const;
   Frequency remove_calibration (Frequency) const;
@@ -595,10 +597,10 @@ private:
   void after_CALL3_downloaded();
   void error_during_CALL3_download (QString const& reason);
   void read_CALL3_version();
+  Q_SLOT void on_callsign_line_edit_textChanged (QString const&);
   Q_SLOT void on_udp_server_line_edit_textChanged (QString const&);
   Q_SLOT void on_udp_server_line_edit_editingFinished ();
   Q_SLOT void on_save_path_select_push_button_clicked (bool);
-  Q_SLOT void on_azel_path_select_push_button_clicked (bool);
   Q_SLOT void on_calibration_intercept_spin_box_valueChanged (double);
   Q_SLOT void handle_leavingSettings ();
   Q_SLOT void on_calibration_slope_ppm_spin_box_valueChanged (double);
@@ -716,8 +718,6 @@ private:
   QDir writeable_data_dir_;
   QDir default_save_directory_;
   QDir save_directory_;
-  QDir default_azel_directory_;
-  QDir azel_directory_;
 
   QFont font_;
   QFont next_font_;
@@ -937,7 +937,6 @@ private:
   bool bLowSidelobes_;
   bool sortAlphabetically_;
   bool hideCARD_;
-  bool AzElExtraLines_;
   bool pwrBandTxMemory_;
   bool pwrBandTuneMemory_;
   bool highlight_DXcall_;
@@ -1115,9 +1114,7 @@ FrequencyList_v2_101 const * Configuration::frequencies () const {return &m_->fr
 QStringListModel * Configuration::macros () {return &m_->macros_;}
 QStringListModel const * Configuration::macros () const {return &m_->macros_;}
 QDir Configuration::save_directory () const {return m_->save_directory_;}
-QDir Configuration::azel_directory () const {return m_->azel_directory_;}
 QString Configuration::rig_name () const {return m_->rig_params_.rig_name;}
-bool Configuration::AzElExtraLines () const {return m_->AzElExtraLines_;}
 bool Configuration::pwrBandTxMemory () const {return m_->pwrBandTxMemory_;}
 bool Configuration::pwrBandTuneMemory () const {return m_->pwrBandTuneMemory_;}
 LotWUsers const& Configuration::lotw_users () const {return m_->lotw_users_;}
@@ -1746,7 +1743,7 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   , doc_dir_ {doc_path ()}
   , data_dir_ {data_path ()}
   , temp_dir_ {temp_directory}
-  , writeable_data_dir_ {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}
+  , writeable_data_dir_ {wsjtcb_writable_location (QStandardPaths::DataLocation)}
   , lotw_users_ {network_manager_}
   , cloudlog_ {self, network_manager_}
   , restart_sound_input_device_ {false}
@@ -1794,7 +1791,6 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
     // Make sure the default save directory exists
     QString save_dir {"save"};
     default_save_directory_ = writeable_data_dir_;
-    default_azel_directory_ = writeable_data_dir_;
     if (!default_save_directory_.mkpath (save_dir) || !default_save_directory_.cd (save_dir))
       {
         MessageBox::critical_message (this, tr ("Failed to create save directory"),
@@ -1860,15 +1856,11 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
     });
   connect (ui_->udp_interfaces_combo_box, &QComboBox::currentTextChanged, this, &Configuration::impl::validate_network_interfaces);
 
-  // set up LoTW users CSV file fetching
-  connect (&lotw_users_, &LotWUsers::load_finished, [this] () {
-    ui_->LotW_CSV_fetch_push_button->setEnabled (true);
-  });
-
-  connect(&lotw_users_, &LotWUsers::progress, [this] (QString const& msg) {
-      ui_->LotW_CSV_status_label->setText(msg);
-  });
-
+  // LoTW lookup is disabled in WSJT-CB.
+  ui_->LotW_CSV_URL_line_edit->setEnabled (false);
+  ui_->LotW_CSV_fetch_push_button->setEnabled (false);
+  ui_->LotW_days_since_upload_spin_box->setEnabled (false);
+  ui_->LotW_CSV_status_label->setText (tr ("LoTW disabled in WSJT-CB"));
   lotw_users_.set_local_file_path (writeable_data_dir_.absoluteFilePath ("lotw-user-activity.csv"));
 
   // set up Cloudlog API key test button
@@ -2053,18 +2045,7 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   audio_output_device_ = next_audio_output_device_;
   audio_output_channel_ = next_audio_output_channel_;
 
-  bool fetch_if_needed {false};
-  for (auto const& item : decode_highlighing_model_.items ())
-    {
-      if (DecodeHighlightingModel::Highlight::LotW == item.type_)
-        {
-          fetch_if_needed = item.enabled_;
-          break;
-        }
-    }
-  // load the LoTW users dictionary if it exists, fetch and load if it
-  // doesn't and we need it
-  lotw_users_.load (ui_->LotW_CSV_URL_line_edit->text (), fetch_if_needed);
+  // LoTW is not used by WSJT-CB, so do not load or download its users database.
 
   transceiver_thread_ = new QThread {this};
   transceiver_thread_->start ();
@@ -2092,18 +2073,12 @@ void Configuration::impl::initialize_models ()
     find_audio_devices ();
   }
   auto pal = ui_->callsign_line_edit->palette ();
-  if (my_callsign_.isEmpty ())
-    {
-      pal.setColor (QPalette::Base, "#ffccff");
-    }
-  else
-    {
-      pal.setColor (QPalette::Base, Qt::white);
-    }
+  pal.setColor (QPalette::Base, Qt::white);
   ui_->callsign_line_edit->setPalette (pal);
   ui_->grid_line_edit->setPalette (pal);
   ui_->callsign_line_edit->setText (my_callsign_);
   ui_->grid_line_edit->setText (my_grid_);
+  update_callsign_validation_ui ();
   ui_->use_dynamic_grid->setChecked(use_dynamic_grid_);
   ui_->CW_id_interval_spin_box->setValue (id_interval_);
   ui_->align_spin_box->setValue (align_steps_);
@@ -2120,7 +2095,6 @@ void Configuration::impl::initialize_models ()
   ui_->check_SWR_check_box->setChecked (check_SWR_);
   if (!ui_->PWR_and_SWR_check_box->isChecked()) ui_->check_SWR_check_box->setEnabled (false);
   ui_->save_path_display_label->setText (save_directory_.absolutePath ());
-  ui_->azel_path_display_label->setText (azel_directory_.absolutePath ());
   ui_->CW_id_after_73_check_box->setChecked (id_after_73_);
   ui_->tx_QSY_check_box->setChecked (tx_QSY_allowed_);
   ui_->progress_bar_check_box->setChecked (progressBar_red_);
@@ -2198,7 +2172,6 @@ void Configuration::impl::initialize_models ()
   ui_->CAT_handshake_button_group->button (rig_params_.handshake)->setChecked (true);
   ui_->cbSortAlphabetically->setChecked(sortAlphabetically_);
   ui_->cbHideCARD->setChecked(hideCARD_);
-  ui_->checkBoxAzElExtraLines->setChecked(AzElExtraLines_);
   ui_->checkBoxPwrBandTxMemory->setChecked(pwrBandTxMemory_);
   ui_->checkBoxPwrBandTuneMemory->setChecked(pwrBandTuneMemory_);
   if (rig_params_.force_dtr)
@@ -2458,7 +2431,6 @@ void Configuration::impl::read_settings ()
   aggressive_ = settings_->value ("Aggressive", 4).toInt ();
   RxBandwidth_ = settings_->value ("RxBandwidth", 2500).toInt ();
   save_directory_.setPath (settings_->value ("SaveDir", default_save_directory_.absolutePath ()).toString ());
-  azel_directory_.setPath (settings_->value ("AzElDir", default_azel_directory_.absolutePath ()).toString ());
 
   tci_audio_ = settings_->value ("TCIAudio", tci_audio_).toBool ();
 
@@ -2645,7 +2617,6 @@ void Configuration::impl::read_settings ()
   calibration_.slope_ppm = settings_->value ("CalibrationSlopePPM", 0.).toDouble ();
   sortAlphabetically_ = settings_->value("SortAlphabetically",true).toBool ();
   hideCARD_ = settings_->value("HideCARD",true).toBool ();
-  AzElExtraLines_ = settings_->value("AzElExtraLines",false).toBool ();
   pwrBandTxMemory_ = settings_->value("pwrBandTxMemory",false).toBool ();
   pwrBandTuneMemory_ = settings_->value("pwrBandTuneMemory",false).toBool ();
   highlight_DXcall_ = settings_->value("highlight_DXcall",true).toBool ();
@@ -2785,7 +2756,6 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("PTTMethod", QVariant::fromValue (rig_params_.ptt_type));
   settings_->setValue ("PTTport", rig_params_.ptt_port);
   settings_->setValue ("SaveDir", save_directory_.absolutePath ());
-  settings_->setValue ("AzElDir", azel_directory_.absolutePath ());
   if (!audio_input_device_.isNull ()) {
       settings_->setValue ("SoundInName", audio_input_device_.deviceName ());
       settings_->setValue ("AudioInputChannel", AudioDevice::toString (audio_input_channel_));
@@ -2908,7 +2878,6 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("CalibrationSlopePPM", calibration_.slope_ppm);
   settings_->setValue ("SortAlphabetically", sortAlphabetically_);
   settings_->setValue ("HideCARD", hideCARD_);
-  settings_->setValue ("AzElExtraLines", AzElExtraLines_);
   settings_->setValue ("pwrBandTxMemory", pwrBandTxMemory_);
   settings_->setValue ("pwrBandTuneMemory", pwrBandTuneMemory_);
   settings_->setValue ("Region", QVariant::fromValue (region_));
@@ -3101,8 +3070,38 @@ void Configuration::impl::set_rig_invariants ()
                                               || TransceiverFactory::basic_transceiver_name_ != rig);
 }
 
+bool Configuration::impl::has_valid_cb_callsign () const
+{
+  return Radio::is_complete_cb_callsign (ui_->callsign_line_edit->text ());
+}
+
+void Configuration::impl::update_callsign_validation_ui ()
+{
+  auto const valid_cb = has_valid_cb_callsign ();
+  auto pal = ui_->callsign_line_edit->palette ();
+  auto const base_color = valid_cb ? QColor {Qt::white} : QColor {"#ffb3b3"};
+  pal.setColor (QPalette::Base, base_color);
+  ui_->callsign_line_edit->setPalette (pal);
+
+  if (auto * ok_button = ui_->configuration_dialog_button_box->button (QDialogButtonBox::Ok))
+    {
+      ok_button->setEnabled (valid_cb);
+    }
+}
+
 bool Configuration::impl::validate ()
 {
+  if (!has_valid_cb_callsign ())
+    {
+      update_callsign_validation_ui ();
+      find_tab (ui_->callsign_line_edit);
+      MessageBox::critical_message (
+          this,
+          tr ("Invalid callsign"),
+          tr ("My callsign must match the CB format: N{1,3}L{1,2}N{1,3} or N{1,3}L{1,2}/LL."));
+      return false;
+    }
+
   if (ui_->sound_input_combo_box->currentIndex () < 0
       && next_audio_input_device_.isNull ())
     {
@@ -3444,7 +3443,6 @@ void Configuration::impl::accept ()
   data_mode_ = static_cast<DataMode> (ui_->TX_mode_button_group->checkedId ());
   bLowSidelobes_ = ui_->rbLowSidelobes->isChecked();
   save_directory_.setPath (ui_->save_path_display_label->text ());
-  azel_directory_.setPath (ui_->azel_path_display_label->text ());
   enable_VHF_features_ = ui_->enable_VHF_features_check_box->isChecked ();
   decode_at_52s_ = ui_->decode_at_52s_check_box->isChecked ();
   kHz_without_k_ = ui_->kHz_without_k_check_box->isChecked ();
@@ -3479,7 +3477,6 @@ void Configuration::impl::accept ()
   calibration_.slope_ppm = ui_->calibration_slope_ppm_spin_box->value ();
   sortAlphabetically_ = ui_->cbSortAlphabetically->isChecked ();
   hideCARD_ = ui_->cbHideCARD->isChecked ();
-  AzElExtraLines_ = ui_->checkBoxAzElExtraLines->isChecked ();
   pwrBandTxMemory_ = ui_->checkBoxPwrBandTxMemory->isChecked ();
   pwrBandTuneMemory_ = ui_->checkBoxPwrBandTuneMemory->isChecked ();
   opCall_=ui_->opCallEntry->text();
@@ -3670,7 +3667,7 @@ void Configuration::impl::on_rescan_log_push_button_clicked (bool /*clicked*/)
 void Configuration::impl::on_CTY_download_button_clicked (bool /*clicked*/)
 {
   ui_->CTY_download_button->setEnabled (false); // disable button until download is complete
-  QDir dataPath {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  QDir dataPath {wsjtcb_writable_location (QStandardPaths::DataLocation)};
   cty_download.configure(network_manager_,
                          "http://www.country-files.com/bigcty/cty.dat",
                          dataPath.absoluteFilePath("cty.dat"),
@@ -3705,7 +3702,7 @@ void Configuration::impl::after_CTY_downloaded ()
 void Configuration::impl::on_CALL3_download_button_clicked (bool /*clicked*/)
 {
   ui_->CALL3_download_button->setEnabled (false); // disable button until download is complete
-  QDir dataPath {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  QDir dataPath {wsjtcb_writable_location (QStandardPaths::DataLocation)};
   QFile g {dataPath.absolutePath() + "/" + "CALL3_backup.TXT"};
   if (g.exists()) QFile::rename(dataPath.absolutePath() + "/" + "CALL3_backup.TXT", dataPath.absolutePath() + "/" + "CALL3_backup.tmp");
   QFile f {dataPath.absolutePath() + "/" + "CALL3.TXT"};
@@ -3725,7 +3722,7 @@ void Configuration::impl::on_CALL3_download_button_clicked (bool /*clicked*/)
 void Configuration::impl::on_CALL3_EME_download_button_clicked (bool /*clicked*/)
 {
   ui_->CALL3_EME_download_button->setEnabled (false); // disable button until download is complete
-  QDir dataPath {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  QDir dataPath {wsjtcb_writable_location (QStandardPaths::DataLocation)};
   QFile g {dataPath.absolutePath() + "/" + "CALL3_backup.TXT"};
   if (g.exists()) QFile::rename(dataPath.absolutePath() + "/" + "CALL3_backup.TXT", dataPath.absolutePath() + "/" + "CALL3_backup.tmp");
   QFile f {dataPath.absolutePath() + "/" + "CALL3.TXT"};
@@ -3747,7 +3744,7 @@ void Configuration::impl::error_during_CALL3_download (QString const& reason)
   MessageBox::warning_message (this, tr ("Error Loading CALL3.TXT file"), reason);
   ui_->CALL3_download_button->setEnabled (true);
   ui_->CALL3_EME_download_button->setEnabled (true);
-  QDir dataPath {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  QDir dataPath {wsjtcb_writable_location (QStandardPaths::DataLocation)};
   QFile f {dataPath.absolutePath() + "/" + "CALL3.TXT"};
   if (!f.exists()) QFile::copy(dataPath.absolutePath() + "/" + "CALL3_backup.TXT", dataPath.absolutePath() + "/" + "CALL3.TXT");
   QFile g {dataPath.absolutePath() + "/" + "CALL3_backup.TXT"};
@@ -3764,7 +3761,7 @@ void Configuration::impl::after_CALL3_downloaded ()
 {
   ui_->CALL3_download_button->setEnabled (true);
   ui_->CALL3_EME_download_button->setEnabled (true);
-  QDir dataPath {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  QDir dataPath {wsjtcb_writable_location (QStandardPaths::DataLocation)};
   QFile g {dataPath.absolutePath() + "/" + "CALL3_backup.TXT"};
   QFile h {dataPath.absolutePath() + "/" + "CALL3_backup.tmp"};
   if (!g.exists() and h.exists()) {
@@ -3778,7 +3775,7 @@ void Configuration::impl::after_CALL3_downloaded ()
 void Configuration::impl::read_CALL3_version ()
 {
   QString text;
-  QDir dataPath {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  QDir dataPath {wsjtcb_writable_location (QStandardPaths::DataLocation)};
   QFile call3file {dataPath.absolutePath() + "/" + "CALL3.TXT"};
     QTextStream call3stream(&call3file);
     if(call3file.open (QIODevice::ReadOnly | QIODevice::Text)) {
@@ -3798,7 +3795,7 @@ void Configuration::impl::read_CALL3_version ()
 
 void Configuration::impl::on_LotW_CSV_fetch_push_button_clicked (bool /*checked*/)
 {
-  lotw_users_.load (ui_->LotW_CSV_URL_line_edit->text (), true, true);
+  ui_->LotW_CSV_status_label->setText (tr ("LoTW disabled in WSJT-CB"));
   ui_->LotW_CSV_fetch_push_button->setEnabled (false);
 }
 
@@ -4170,6 +4167,11 @@ void Configuration::impl::on_add_macro_push_button_clicked (bool /* checked */)
     }
 }
 
+void Configuration::impl::on_callsign_line_edit_textChanged (QString const&)
+{
+  update_callsign_validation_ui ();
+}
+
 void Configuration::impl::on_udp_server_line_edit_textChanged (QString const&)
 {
   udp_server_name_edited_ = true;
@@ -4469,18 +4471,6 @@ void Configuration::impl::on_save_path_select_push_button_clicked (bool /* check
           ui_->save_path_display_label->setText (fd.selectedFiles ().at (0));
         }
     }
-}
-
-void Configuration::impl::on_azel_path_select_push_button_clicked (bool /* checked */)
-{
-  QFileDialog fd {this, tr ("AzEl Directory"), ui_->azel_path_display_label->text ()};
-  fd.setFileMode (QFileDialog::Directory);
-  fd.setOption (QFileDialog::ShowDirsOnly);
-  if (fd.exec ()) {
-    if (fd.selectedFiles ().size ()) {
-      ui_->azel_path_display_label->setText(fd.selectedFiles().at(0));
-    }
-  }
 }
 
 void Configuration::impl::on_calibration_intercept_spin_box_valueChanged (double)

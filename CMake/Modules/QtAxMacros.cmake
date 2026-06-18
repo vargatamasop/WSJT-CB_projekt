@@ -5,7 +5,7 @@
 if (WIN32)
   include (CMakeParseArguments)
 
-  find_program (DUMPCPP_Executable dumpcpp.exe)
+  find_program (DUMPCPP_Executable NAMES dumpcpp.exe dumpcpp-qt5.exe)
 
   # wrap_ax_server (outfiles inputfile ...)
 

@@ -11,6 +11,7 @@
 #include <QDataStream>
 #include <QMetaType>
 #include <QMetaEnum>
+#include <QStandardPaths>
 
 #define ENUM_QDATASTREAM_OPS_DECL(CLASS, ENUM)				\
   QDataStream& operator << (QDataStream&, CLASS::ENUM const&);			\
@@ -77,6 +78,9 @@ void throw_qstring (QString const& qs)
 }
 
 QString font_as_stylesheet (QFont const&);
+
+QString wsjtcb_stable_application_name ();
+QString wsjtcb_writable_location (QStandardPaths::StandardLocation location);
 
 // do what is necessary to change a dynamic property and trigger any
 // conditional style sheet updates

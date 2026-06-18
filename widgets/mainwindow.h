@@ -497,6 +497,7 @@ private:
   void hide_band_button_bar ();
   void writeAllTxt(QString message);
   void auto_sequence (DecodedText const& message, unsigned start_tolerance, unsigned stop_tolerance);
+  bool has_complete_cb_peer (DecodedText const& message) const;
   void trim_view (bool b);
   void foxTest();
   void setColorHighlighting();
