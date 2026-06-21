@@ -139,8 +139,7 @@ int main(int argc, char *argv[])
       std::locale::global (std::locale::classic ());
 
       // Override programs executable basename as application name.
-      a.setApplicationName (product_name () + " by 1AT106 1XZ732 1AT1989");
-      a.setProperty ("wsjtcb.settingsApplicationName", product_name ());
+      a.setApplicationName (product_name () + " by 1AT106 - 1XZ732 - 161XZ085 - 109HA2247");
       a.setApplicationVersion (version ());
 
       QCommandLineParser parser;
@@ -193,7 +192,6 @@ int main(int argc, char *argv[])
 
       // support for multiple instances running from a single installation
       bool multiple {false};
-      auto settings_application_name = a.property ("wsjtcb.settingsApplicationName").toString ();
       if (parser.isSet (rig_option) || parser.isSet (test_option))
         {
           auto temp_name = parser.value (rig_option);
@@ -206,24 +204,17 @@ int main(int argc, char *argv[])
                 }
                 
               a.setApplicationName (a.applicationName () + " - " + temp_name);
-              settings_application_name += " - " + temp_name;
-              a.setProperty ("wsjtcb.settingsApplicationName", settings_application_name);
             }
 
           if (parser.isSet (test_option))
             {
               a.setApplicationName (a.applicationName () + " - test");
-              settings_application_name += " - test";
-              a.setProperty ("wsjtcb.settingsApplicationName", settings_application_name);
             }
 
           multiple = true;
         }
 
       // now we have the application name we can open the logging and settings
-      wsjtcb_writable_location (QStandardPaths::ConfigLocation);
-      wsjtcb_writable_location (QStandardPaths::DataLocation);
-      wsjtcb_writable_location (QStandardPaths::AppLocalDataLocation);
       WSJTXLogging lg;
       LOG_INFO (program_title (revision ()) << " - Program startup");
       MultiSettings multi_settings {parser.value (cfg_option)};
@@ -314,7 +305,7 @@ int main(int argc, char *argv[])
       }
 
       // create writeable data directory if not already there
-      auto writeable_data_dir = QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)};
+      auto writeable_data_dir = QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
       if (!writeable_data_dir.mkpath ("."))
         {
           MessageBox::critical_message (nullptr, a.translate ("main", "Failed to create data directory"),
