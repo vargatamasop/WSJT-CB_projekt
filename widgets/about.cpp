@@ -15,24 +15,12 @@ CAboutDlg::CAboutDlg(QWidget *parent) :
 
   ui->labelTxt->setText ("<h2>" + product_versioned_name (revision ()) + "</h2>"
 
-    "WSJT-CB V 1.3.0-crimson is an optimized version of the WSJT software for<br />"
+    "WSJT-11m V 1.0.0-crimson is an optimized version of the WSJT software for<br />"
     "weak-signal CB 27MHz communications.  <br /><br />"
-    "&copy; 2026 by Lorenzo 1AT106, Pietro 1XZ732,  <br />"
-    "Mancausoft, 1AT1989. <br />"
-    "WSJT-CB is based on the WSJT software <br />"
+    "&copy; 2026 by Varga Tamás 109HA2247,  <br />"
+    "WSJT-11m is based on the WSJT-CB software <br />"
     "by Joe Taylor K1JT.<br /><br />"
-    "We gratefully acknowledge contributions from:<br />"
-    "The Alfa Tango DX Group for testing<br />"
-    "The XZ Group for resources and developers<br />"
-    "The 11m community for the support.<br />"
-    "DISCLAIMER: This software is provided for educational purposes only.<br /><br />"
-    "WSJT-CB is licensed under the terms of Version 3 <br />"
-    "of the GNU General Public License (GPL) <br /><br />"
-    "<a href=" TO_STRING__ (PROJECT_HOMEPAGE) ">"
-    "<img src=\":/icon_128x128.png\" /></a>"
-    "<a href=\"https://www.gnu.org/licenses/gpl-3.0.txt\">"
-    "<img src=\":/gpl-v3-logo.png\" height=\"80\" /><br />"
-    "https://www.gnu.org/licenses/gpl-3.0.txt</a>");
+    "The 11m community for the support.<br />");
 }
 
 CAboutDlg::~CAboutDlg()
