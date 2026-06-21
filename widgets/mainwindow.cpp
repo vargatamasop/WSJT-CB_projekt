@@ -48,7 +48,6 @@
 #include <QAction>
 #include <QButtonGroup>
 #include <QActionGroup>
-#include <QStyleFactory>
 #include <QSplitter>
 #include <QSplashScreen>
 #include <QUdpSocket>
@@ -100,6 +99,7 @@
 #include "validators/MaidenheadLocatorValidator.hpp"
 #include "validators/CallsignValidator.hpp"
 #include "EqualizationToolsDialog.hpp"
+#include "Network/LotWUsers.hpp"
 #include "logbook/AD1CCty.hpp"
 #include "models/FoxLog.hpp"
 #include "models/CabrilloLog.hpp"
@@ -332,22 +332,6 @@ namespace
       || mode == "FT4"
       || mode == "FST4"
       || mode == "Q65";
-  }
-
-  QString modern_dark_stylesheet (QFont const& font)
-  {
-    QFile file {":qdarkstyle/style.qss"};
-    QString stylesheet;
-    if (file.open (QFile::ReadOnly | QFile::Text))
-      {
-        QTextStream stream {&file};
-        stylesheet = stream.readAll ();
-      }
-    else
-      {
-        qWarning () << "Unable to load dark stylesheet resource:" << file.fileName ();
-      }
-    return stylesheet + "* {" + font_as_stylesheet (font) + '}';
   }
 }
 
@@ -884,13 +868,13 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   ui->actionMT11->setActionGroup(FT8threadsGroup);
   ui->actionMT12->setActionGroup(FT8threadsGroup);
 
-  connect (ui->download_samples_action, &QAction::triggered, [this] () {
-      if (!m_sampleDownloader)
-        {
-          m_sampleDownloader.reset (new SampleDownloader {m_settings, &m_config, &m_network_manager, this});
-        }
-      m_sampleDownloader->show ();
-    });
+//  connect (ui->download_samples_action, &QAction::triggered, [this] () {
+     // if (!m_sampleDownloader)
+       // {
+      //    m_sampleDownloader.reset (new SampleDownloader {m_settings, &m_config, &m_network_manager, this});
+       // }
+     // m_sampleDownloader->show ();
+   // });
 
   connect (ui->view_phase_response_action, &QAction::triggered, [this] () {
       if (!m_equalizationToolsDialog)
@@ -903,6 +887,10 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
         }
       m_equalizationToolsDialog->show ();
     });
+
+  connect (&m_config.lotw_users (), &LotWUsers::LotW_users_error, this, [this] (QString const& reason) {
+      MessageBox::warning_message (this, tr ("Error Loading LotW Users Data"), reason);
+    }, Qt::QueuedConnection);
 
   QButtonGroup* txMsgButtonGroup = new QButtonGroup {this};
   txMsgButtonGroup->addButton(ui->txrb1,1);
@@ -1881,7 +1869,7 @@ void MainWindow::readSettings()
   ui->actionSplit_ALL_TXT_monthly->setChecked(m_settings->value("splitAllTxtMonthly", false).toBool());
   ui->actionDisable_writing_of_ALL_TXT->setChecked(m_settings->value("disableWritingOfAllTxt", false).toBool());
   ui->actionDisable_event_logging->setChecked(m_settings->value("DisableEventLogging", false).toBool());
-  ui->actionUse_Dark_Style->setChecked(m_settings->value("DarkStyle", true).toBool());
+  ui->actionUse_Dark_Style->setChecked(m_settings->value("DarkStyle", false).toBool());
   ui->actionBand_Buttons->setChecked(false);
   ui->actionVHF_UHF_Buttons->setChecked(false);
   ui->tx1->setEnabled(m_settings->value("tx1State", true).toBool());
@@ -2113,20 +2101,27 @@ void MainWindow::set_application_font (QFont const& font)
 {
   // check if dark style is enabled, this check is also effective during the program start
   if (ui->actionUse_Dark_Style->isChecked()) {
-      qApp->setStyle (QStyleFactory::create ("Fusion"));
-      qApp->setFont (font);
-      qApp->setStyleSheet (modern_dark_stylesheet (font));
-      m_useDarkStyle = true;
-      m_wideGraph->setDarkStyle(m_useDarkStyle);
-      apply_main_window_chrome ();
-      check_button_color();
-      ui->tabWidget->setTabShape(QTabWidget::Rounded);
+      QFile f(":qdarkstyle/style.qss");
+      if (!f.exists())   {
+          printf("Unable to set stylesheet, file not found\n");
+      } else {
+          qApp->setFont (font);
+          QString ss;
+          f.open(QFile::ReadOnly | QFile::Text);
+          QTextStream ts(&f);
+          qApp->setStyleSheet(ts.readAll() + "* {" + font_as_stylesheet (font) + '}');
+          m_useDarkStyle = true;
+          m_wideGraph->setDarkStyle(m_useDarkStyle);
+          apply_main_window_chrome ();
+          check_button_color();
+          ui->tabWidget->setTabShape(QTabWidget::Rounded);
+      }
    } else {
       m_useDarkStyle = false;
       m_wideGraph->setDarkStyle(m_useDarkStyle);
       apply_main_window_chrome ();
       check_button_color();
-      ui->tabWidget->setTabShape(QTabWidget::Rounded);
+      ui->tabWidget->setTabShape(QTabWidget::Triangular);
       qApp->setFont (font);
       // set font in the application style sheet as well in case it has
       // been modified in the style sheet which has priority
@@ -2228,47 +2223,20 @@ void MainWindow::apply_main_window_chrome ()
   };
 
   if (is_dark_palette) {
-    set_decode_panel (ui->decodedTextBrowser, QColor {"#111922"}, QColor {"#eaf2fb"}, QColor {"#2f4258"}, QColor {"#20a8c9"});
-    set_decode_panel (ui->decodedTextBrowser2, QColor {"#111922"}, QColor {"#eaf2fb"}, QColor {"#2f4258"}, QColor {"#20a8c9"});
+    set_decode_panel (ui->decodedTextBrowser, QColor {"#1f252b"}, QColor {"#f4f8fc"}, QColor {"#435363"}, QColor {"#2b7dbf"});
+    set_decode_panel (ui->decodedTextBrowser2, QColor {"#1f252b"}, QColor {"#f4f8fc"}, QColor {"#435363"}, QColor {"#2b7dbf"});
     setStyleSheet (QString {
-      "QMainWindow#MainWindow, #centralWidget {"
-      "  background-color: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #090e14, stop:0.55 #0d141d, stop:1 #121c28);"
-      "}"
       "#lh_decodes_title_label, #rh_decodes_title_label {"
-      "  color: #eaf2fb; background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1b2a3b, stop:1 #253448);"
-      "  border: 1px solid #39516b; border-radius: 12px; padding: 7px 12px; font-weight: 600;"
+      "  color: #f4f8fc; background-color: #34424f; border: 1px solid #4a5c6d;"
+      "  border-radius: 8px; padding: 6px 10px;"
       "}"
       "#lh_decodes_headings_label, #rh_decodes_headings_label {"
-      "  color: #b9c9da; background-color: #18222e; border: 1px solid #2e4358;"
-      "  border-radius: 9px; padding: 0px 10px; min-height: 18px;"
+      "  color: #cfd9e4; background-color: #2d3945; border: 1px solid #435363;"
+      "  border-radius: 6px; padding: 4px 8px;"
       "}"
-      "#tabWidget::pane, #controls_container, #lower_panel_widget {"
-      "  background-color: #0f1620; border: 1px solid #2a3a4f; border-radius: 12px;"
-      "}"
-      "QGroupBox {"
-      "  background-color: #111b27; border: 1px solid #2d4158; border-radius: 10px; margin-top: 1.1em; padding-top: 0.6em;"
-      "}"
-      "QGroupBox::title {"
-      "  subcontrol-origin: margin; left: 10px; padding: 0 6px; color: #c2d1de;"
-      "}"
-      "QTabWidget::pane { border-top: 1px solid #31475f; }"
-      "QTabBar::tab:top, QTabBar::tab:bottom {"
-      "  background: #1a2533; border: 1px solid #30465e; border-bottom: none;"
-      "  color: #c3d3e3; min-width: 70px; padding: 7px 14px; margin-right: 4px;"
-      "  border-top-left-radius: 9px; border-top-right-radius: 9px;"
-      "}"
-      "QTabBar::tab:top:selected, QTabBar::tab:bottom:selected { background: #223246; color: #f4f8fc; }"
-      "QTabBar::tab:top:hover:!selected, QTabBar::tab:bottom:hover:!selected { background: #213043; }"
-      "#tabWidget QTabBar::tab:left {"
-      "  background: #152434; color: #c3d3e3; border: 1px solid #30465e; border-right: none;"
-      "  min-width: 28px; min-height: 34px; padding: 6px 4px; margin: 2px 0;"
-      "  border-top-left-radius: 7px; border-bottom-left-radius: 7px;"
-      "}"
-      "#tabWidget QTabBar::tab:left:selected { background: #223246; color: #f4f8fc; border-color: #3a5977; }"
-      "#tabWidget QTabBar::tab:left:hover:!selected { background: #213043; }"
-      "#lower_panel_widget { border-top: 1px solid #2b3e54; }"
-      "#decodes_splitter::handle { background-color: #243649; width: 2px; }"
-      "#main_splitter::handle { background-color: #243649; height: 2px; }"
+      "#lower_panel_widget { border-top: 1px solid #435363; }"
+      "#decodes_splitter::handle { background-color: #3a4651; width: 2px; }"
+      "#main_splitter::handle { background-color: #3a4651; height: 2px; }"
     });
   } else {
     set_decode_panel (ui->decodedTextBrowser, QColor {"#fbfdff"}, QColor {"#111111"}, QColor {"#cad8e4"}, QColor {"#2f80c1"});
@@ -2280,7 +2248,7 @@ void MainWindow::apply_main_window_chrome ()
       "}"
       "#lh_decodes_headings_label, #rh_decodes_headings_label {"
       "  color: #466074; background-color: #f4f8fb; border: 1px solid #d3dfe9;"
-      "  border-radius: 6px; padding: 0px 8px; min-height: 18px;"
+      "  border-radius: 6px; padding: 4px 8px;"
       "}"
       "#lower_panel_widget { border-top: 1px solid #d5e0ea; }"
       "#decodes_splitter::handle { background-color: #d3dde7; width: 2px; }"
@@ -3187,7 +3155,6 @@ void MainWindow::fastSink(qint64 frames)
     if(((pounce && text.contains(" CQ ") && m_config.Wait_features_enabled())
         or (m_auto && m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " "))) && !ignored
         && !filtered && !selected && ui->respondComboBox->isVisible() && ui->respondComboBox->currentText()=="CQ: First"
-        && has_complete_cb_peer (decodedtext)
         && (!(ui->actionFull_Duplex_Mode->isChecked() && m_txing))) {
                   m_bDoubleClicked=true;
                   selected = true;
@@ -3205,8 +3172,7 @@ void MainWindow::fastSink(qint64 frames)
         QString deCall;
         QString deGrid;
         decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-        if (!filtered && !ignored && has_complete_cb_peer (decodedtext)
-            && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
+        if (!filtered && !ignored && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
              (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
              (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                                                                     )) {
@@ -3243,7 +3209,7 @@ void MainWindow::fastSink(qint64 frames)
         QString deCall;
         QString deGrid;
         decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-        if (!filtered && !ignored && has_complete_cb_peer (decodedtext) && (
+        if (!filtered && !ignored && (
              (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
              (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                           )) {
@@ -3274,7 +3240,7 @@ void MainWindow::fastSink(qint64 frames)
         QString deCall;
         QString deGrid;
         decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-        if (!filtered && !ignored && has_complete_cb_peer (decodedtext) && (
+        if (!filtered && !ignored && (
              (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
              (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                           )) {
@@ -5874,7 +5840,7 @@ void MainWindow::refreshPileupList()
 
 void MainWindow::read_log()
 {
-  static QFile f {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb.log")};
+  static QFile f {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb.log")};
   f.open(QIODevice::ReadOnly);
   if(f.isOpen()) {
     QTextStream in(&f);
@@ -7041,7 +7007,6 @@ void MainWindow::readFromStdout()                             //readFromStdout
         if(((pounce && text.contains(" CQ ") && m_config.Wait_features_enabled())
               or (m_auto && m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " "))) && !ignored
             && !filtered && !selected && ui->respondComboBox->isVisible() && ui->respondComboBox->currentText()=="CQ: First"
-            && has_complete_cb_peer (decodedtext0)
             && (!(ui->actionFull_Duplex_Mode->isChecked() && m_txing))) {
           m_bDoubleClicked=true;
           selected = true;
@@ -7059,8 +7024,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0)
-              && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
+          if (!filtered && !ignored && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7097,7 +7061,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0) && (
+          if (!filtered && !ignored && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7129,7 +7093,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0) && (
+          if (!filtered && !ignored && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7229,8 +7193,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           }
         });                                                  // UR delete for versions without alerts
 
-          if (m_bBestSPArmed && m_mode=="FT4" && CALLING == m_QSOProgress && !ignored && !filtered
-              && has_complete_cb_peer (decodedtext0)) {
+          if (m_bBestSPArmed && m_mode=="FT4" && CALLING == m_QSOProgress && !ignored && !filtered) {
             QString messagePriority=ui->decodedTextBrowser->CQPriority();
             if (messagePriority!="") {
               if (messagePriority=="New Call on Band"
@@ -7286,7 +7249,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
             } else {
                   bProcessMsgNormally=true;
             }
-            if(bProcessMsgNormally && has_complete_cb_peer (decodedtext)) {
+            if(bProcessMsgNormally) {
                   m_bDoubleClicked=true;
                   m_bAutoReply = true;
                   processMessage (decodedtext);
@@ -7483,45 +7446,8 @@ void MainWindow::readFromStdout()                             //readFromStdout
 //                  another caller and we are going to transmit within
 //                  +/- this value of the reply to another caller
 //
-bool MainWindow::has_complete_cb_peer (DecodedText const& message) const
-{
-  QString peer;
-  QString grid;
-  message.deCallAndGrid (peer, grid);
-
-  auto const is_local_call = [this] (QString const& token) {
-    auto const normalized = token.trimmed ().toUpper ();
-    return !normalized.isEmpty ()
-      && (normalized == m_config.my_callsign ().trimmed ().toUpper ()
-          || normalized == m_baseCall
-          || Radio::base_callsign (normalized) == m_baseCall);
-  };
-
-  auto const words = message.clean_string ().mid (22).remove ("<").remove (">")
-    .split (" ", SkipEmptyParts);
-  if (!message.isStandardMessage ())
-    {
-      for (int i = 1; i < words.size (); ++i)
-        {
-          if (is_local_call (words.at (i)))
-            {
-              // Free-text CB replies to our CQ can arrive as "DXCALL MYCALL".
-              peer = words.at (i - 1);
-              break;
-            }
-        }
-    }
-
-  return Radio::is_complete_cb_callsign (peer);
-}
-
 void MainWindow::auto_sequence (DecodedText const& message, unsigned start_tolerance, unsigned stop_tolerance)
 {
-  if (m_bCallingCQ && !has_complete_cb_peer (message))
-    {
-      return;
-    }
-
   auto const& message_words = message.messageWords ();
   auto is_73 = message_words.filter (QRegularExpression {"^(73|RR73)$"}).size();
   auto msg_no_hash = message.clean_string();
@@ -9769,8 +9695,44 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
     m_gen_message_is_cq = false;
     return;
   }
+
   m_hisCall0 = hisCall;
   auto const& my_callsign = m_config.my_callsign ();
+
+ // === WSJT-CB EGYEDI ÜZENETGENERÁLÓ ===
+  QString cbMyCall = m_config.my_callsign();
+  if (cbMyCall.length() > 6 || hisCall.length() > 6) {
+      ui->tx1->setText("<" + hisCall + "> " + cbMyCall);
+      ui->tx2->setText(hisCall + " " + rpt);
+      ui->tx3->setText(hisCall + " R" + rpt);
+      ui->tx4->setText(hisCall + " RRR");
+      
+      // Olvassuk ki a Tx 5 aktuális tartalmát (vagy a kiválasztott makrót)
+      QString currentTx5 = ui->tx5->currentText();
+      
+      if (currentTx5.contains("?")) {
+          // Ha kérdőjeles makrót talál, azonnal behelyettesíti!
+          QString newTx5 = currentTx5;
+          newTx5.replace("?HISCALL", hisCall, Qt::CaseInsensitive);
+          newTx5.replace("?MYCALL", cbMyCall, Qt::CaseInsensitive);
+          newTx5.replace("?REPORT", rpt, Qt::CaseInsensitive);
+          ui->tx5->lineEdit()->setText(newTx5);
+      } 
+      else if (hisCall != m_lastCallsign || (unconditional && currentTx5.isEmpty())) {
+          // Ha új állomás hív (vagy üres a mező), visszaáll az alapértelmezett 73-ra
+          ui->tx5->lineEdit()->setText(hisCall + " 73");
+      }
+      
+      m_lastCallsign = hisCall; // Eltároljuk a partnert a memóriában
+      
+      ui->tx6->setText("CQ " + cbMyCall);
+      m_gen_message_is_cq = false;
+      return; // Kilépés
+  }
+  // =====================================
+
+
+  // === INNENTŐL FOLYTATÓDIK A GYÁRI KÓD A RÖVID HÍVÓJELEKRE ===
   auto is_compound = my_callsign != m_baseCall;
   auto is_type_one = !is77BitMode () && is_compound && shortList (my_callsign);
   auto const& my_grid = m_config.my_grid ().left (4);
@@ -10013,9 +9975,7 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
   }
   m_rpt=rpt;
   if(SpecOp::HOUND == m_specOp and is_compound) ui->tx1->setText("DE " + my_callsign);
-}
-
-void MainWindow::TxAgain()
+}void MainWindow::TxAgain()
 {
   auto_tx_mode(true);
 }
@@ -16082,7 +16042,7 @@ void MainWindow::bandHopping()
 void MainWindow::on_actionDefault_event_logging_triggered()
 {
 #if defined(Q_OS_WIN)
-    QFile::remove (QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_log_config.ini"));
+    QFile::remove (QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_log_config.ini"));
 #else
     QFile::remove (QDir {QStandardPaths::writableLocation (QStandardPaths::ConfigLocation)}.absoluteFilePath ("wsjtcb_log_config.ini"));
 #endif
@@ -16091,7 +16051,7 @@ void MainWindow::on_actionDefault_event_logging_triggered()
 void MainWindow::on_actionDiagnostic_mode_triggered()
 {
 #if defined(Q_OS_WIN)
-    static QFile f {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_log_config.ini")};
+    static QFile f {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_log_config.ini")};
 #else
     static QFile f {QDir {QStandardPaths::writableLocation (QStandardPaths::ConfigLocation)}.absoluteFilePath ("wsjtcb_log_config.ini")};
 #endif
@@ -16102,7 +16062,7 @@ void MainWindow::on_actionDiagnostic_mode_triggered()
       return;
     }
     QString instance = "";
-    QString path = wsjtcb_writable_location (QStandardPaths::DataLocation);
+    QString path = QStandardPaths::writableLocation (QStandardPaths::DataLocation);
     QStringList tw;
     if (path.contains("/WSJT-CB")) tw=path.split("/WSJT-CB");
     if (tw.size () > 0 && tw[1].remove(" - ") != "") instance = tw[1].remove(" - ") + "/";
@@ -16151,7 +16111,7 @@ void MainWindow::on_actionDiagnostic_mode_triggered()
 void MainWindow::on_actionDisable_event_logging_triggered()
 {
 #if defined(Q_OS_WIN)
-    static QFile f {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_log_config.ini")};
+    static QFile f {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_log_config.ini")};
 #else
     static QFile f {QDir {QStandardPaths::writableLocation (QStandardPaths::ConfigLocation)}.absoluteFilePath ("wsjtcb_log_config.ini")};
 #endif
@@ -16168,27 +16128,34 @@ void MainWindow::on_actionDisable_event_logging_triggered()
     QTextStream out(&f);
     out << EventConfig;
     f.close();
-    QFile::remove (QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_syslog.log"));
+    QFile::remove (QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb_syslog.log"));
 }
 
 void MainWindow::on_actionUse_Dark_Style_triggered (bool checked)
 {
     QFont font = m_config.text_font();
     if (checked) {
-        qApp->setStyle (QStyleFactory::create ("Fusion"));
-        qApp->setFont (font);
-        qApp->setStyleSheet (modern_dark_stylesheet (font));
-        m_useDarkStyle = true;
-        m_wideGraph->setDarkStyle(m_useDarkStyle);
-        apply_main_window_chrome ();
-        check_button_color();
-        ui->tabWidget->setTabShape(QTabWidget::Rounded);
+        QFile f(":qdarkstyle/style.qss");
+        if (!f.exists())   {
+            printf("Unable to set stylesheet, file not found\n");
+        } else {
+            qApp->setFont (font);
+            QString ss;
+            f.open(QFile::ReadOnly | QFile::Text);
+            QTextStream ts(&f);
+            qApp->setStyleSheet(ts.readAll() + "* {" + font_as_stylesheet (font) + '}');
+            m_useDarkStyle = true;
+            m_wideGraph->setDarkStyle(m_useDarkStyle);
+            apply_main_window_chrome ();
+            check_button_color();
+            ui->tabWidget->setTabShape(QTabWidget::Rounded);
+        }
     } else {
         m_useDarkStyle = false;
         m_wideGraph->setDarkStyle(m_useDarkStyle);
         apply_main_window_chrome ();
         check_button_color();
-        ui->tabWidget->setTabShape(QTabWidget::Rounded);
+        ui->tabWidget->setTabShape(QTabWidget::Triangular);
         qApp->setFont (font);
         QString ss;
         if (qApp->styleSheet ().size ()) {
@@ -17198,7 +17165,7 @@ void MainWindow::on_pb24G_clicked()
 
 void MainWindow::read_txLog()
 {
-    static QFile logfile {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb.log")};
+    static QFile logfile {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb.log")};
     QTextStream logstream(&logfile);
     if(logfile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         while (!logstream.atEnd()) {
@@ -17214,7 +17181,7 @@ void MainWindow::on_actionErase_Tx_Log_triggered()
   int ret = MessageBox::query_message (this, tr ("Confirm Erase"),
           tr ("Are you sure you want to erase the Tx Log?"));
   if(ret==MessageBox::Yes) {
-    static QFile logFile {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb.log")};
+    static QFile logFile {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtcb.log")};
     logFile.remove();
     txLog = "";
   }
@@ -17223,7 +17190,7 @@ void MainWindow::on_actionErase_Tx_Log_triggered()
 void MainWindow::addCallsignToignoreList()
 {
   if (m_hisCall!="") {
-    static QFile ignoreFile {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("ignore.list")};
+    static QFile ignoreFile {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("ignore.list")};
     if(ignoreFile.open(QIODevice::Text | QIODevice::Append)) {
       QString ignoreEntry= (m_hisCall + ",");
       QTextStream out(&ignoreFile);
@@ -17244,7 +17211,7 @@ void MainWindow::addCallsignToignoreList()
 
 void MainWindow::read_ignoreList()
 {
-    static QFile ignoreFile {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("ignore.list")};
+    static QFile ignoreFile {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("ignore.list")};
     QTextStream ignoreStream(&ignoreFile);
     if(ignoreFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         while (!ignoreStream.atEnd()) {
@@ -17260,7 +17227,7 @@ void MainWindow::on_actionErase_Ignore_List_triggered()
   int ret = MessageBox::query_message (this, tr ("Confirm Erase"),
           tr ("Are you sure you want to erase the Ignore List?"));
   if(ret==MessageBox::Yes) {
-    static QFile ignoreFile {QDir {wsjtcb_writable_location (QStandardPaths::DataLocation)}.absoluteFilePath ("ignore.list")};
+    static QFile ignoreFile {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("ignore.list")};
     ignoreFile.remove();
     ignoreList = "";
   }
