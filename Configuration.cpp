@@ -3098,7 +3098,7 @@ bool Configuration::impl::validate ()
       MessageBox::critical_message (
           this,
           tr ("Invalid callsign"),
-          tr ("My callsign must match the CB format: N{1,3}L{1,2}N{1,3} or N{1,3}L{1,2}/LL."));
+          tr ("My callsign must match the CB format: N{1,3}L{1,2}N{1,4} or N{1,3}L{1,2}/LL."));
       return false;
     }
 

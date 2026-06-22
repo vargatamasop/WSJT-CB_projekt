@@ -25,7 +25,7 @@ namespace Radio
     QRegularExpression cb_callsign_one_digit_suffix_re {
       R"(^([0-9])[A-Z]{1,2}[0-9]{1,4}$)"};
     QRegularExpression cb_callsign_multi_digit_suffix_re {
-      R"(^([0-9]{2,3})[A-Z]{1,2}[0-9]{1,3}$)"};
+      R"(^([0-9]{2,3})[A-Z]{1,2}[0-9]{1,4}$)"};
     QRegularExpression cb_callsign_slash_suffix_re {
       R"(^([0-9]{1,3})[A-Z]{1,2}/[A-Z]{2}$)"};
     QRegularExpression cb_callsign_base_re {
