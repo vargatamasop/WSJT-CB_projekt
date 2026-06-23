@@ -10013,6 +10013,16 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
   }
   m_rpt=rpt;
   if(SpecOp::HOUND == m_specOp and is_compound) ui->tx1->setText("DE " + my_callsign);
+// === WSJT-CB TX5 DYNAMIC MACRO FEATURE ===
+  QString currentTx5 = ui->tx5->currentText();
+  if (currentTx5.contains("?")) {
+      QString newTx5 = currentTx5;
+      newTx5.replace("?HISCALL", hisCall, Qt::CaseInsensitive);
+      newTx5.replace("?MYCALL", m_config.my_callsign(), Qt::CaseInsensitive);
+      newTx5.replace("?REPORT", rpt, Qt::CaseInsensitive);
+      ui->tx5->lineEdit()->setText(newTx5);
+  }
+  // =========================================
 }
 
 void MainWindow::TxAgain()
