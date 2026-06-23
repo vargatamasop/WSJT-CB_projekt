@@ -7462,7 +7462,7 @@ void MainWindow::auto_sequence (DecodedText const& message, unsigned start_toler
       || message_words.at (3).contains (m_baseCall)
       || message_words.at (3).contains (m_config.my_callsign ());
   }
-  if (message_words.size () > 3 && (message.isStandardMessage() || is_73 || is_OK || nonstandard_for_us)) {
+  if (message_words.size () > 3 && (true || message.isStandardMessage() || is_73 || is_OK || nonstandard_for_us)) {
     auto df = message.frequencyOffset ();
     auto within_tolerance = (qAbs (ui->RxFreqSpinBox->value () - df) <= int (start_tolerance)
        || qAbs (ui->TxFreqSpinBox->value () - df) <= int (start_tolerance));
