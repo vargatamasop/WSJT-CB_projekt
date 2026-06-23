@@ -9699,36 +9699,31 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
   m_hisCall0 = hisCall;
   auto const& my_callsign = m_config.my_callsign ();
 
- // === WSJT-CB EGYEDI ÜZENETGENERÁLÓ ===
-  QString cbMyCall = m_config.my_callsign();
-  if (cbMyCall.length() > 6 || hisCall.length() > 6) {
-      ui->tx1->setText("<" + hisCall + "> " + cbMyCall);
-      ui->tx2->setText(hisCall + " " + rpt);
-      ui->tx3->setText(hisCall + " R" + rpt);
-      ui->tx4->setText(hisCall + " RRR");
-      
-      // Olvassuk ki a Tx 5 aktuális tartalmát (vagy a kiválasztott makrót)
-      QString currentTx5 = ui->tx5->currentText();
-      
-      if (currentTx5.contains("?")) {
-          // Ha kérdőjeles makrót talál, azonnal behelyettesíti!
-          QString newTx5 = currentTx5;
-          newTx5.replace("?HISCALL", hisCall, Qt::CaseInsensitive);
-          newTx5.replace("?MYCALL", cbMyCall, Qt::CaseInsensitive);
-          newTx5.replace("?REPORT", rpt, Qt::CaseInsensitive);
-          ui->tx5->lineEdit()->setText(newTx5);
-      } 
-      else if (hisCall != m_lastCallsign || (unconditional && currentTx5.isEmpty())) {
-          // Ha új állomás hív (vagy üres a mező), visszaáll az alapértelmezett 73-ra
-          ui->tx5->lineEdit()->setText(hisCall + " 73");
-      }
-      
-      m_lastCallsign = hisCall; // Eltároljuk a partnert a memóriában
-      
-      ui->tx6->setText("CQ " + cbMyCall);
-      m_gen_message_is_cq = false;
-      return; // Kilépés
-  }
+// === WSJT-CB EGYEDI ÜZENETGENERÁLÓ ===
+ QString cbMyCall = m_config.my_callsign();
+ if (cbMyCall.length() > 6 || hisCall.length() > 6) {
+     ui->tx1->setText("<" + hisCall + "> " + cbMyCall);
+     ui->tx2->setText("<" + hisCall + "> " + rpt);
+     ui->tx3->setText("<" + hisCall + "> " + " R" + rpt);
+     ui->tx4->setText(hisCall + " RRR");
+     
+     // Tx5 makró kezelése
+     QString currentTx5 = ui->tx5->currentText();
+     if (currentTx5.contains("?")) {
+         QString newTx5 = currentTx5;
+         newTx5.replace("?HISCALL", hisCall, Qt::CaseInsensitive);
+         newTx5.replace("?MYCALL", cbMyCall, Qt::CaseInsensitive);
+         newTx5.replace("?REPORT", rpt, Qt::CaseInsensitive);
+         ui->tx5->lineEdit()->setText(newTx5);
+     } else if (hisCall != m_lastCallsign || (unconditional && currentTx5.isEmpty())) {
+         ui->tx5->lineEdit()->setText(hisCall + " 73");
+     }
+     
+     m_lastCallsign = hisCall;
+     ui->tx6->setText("CQ " + cbMyCall);
+     m_gen_message_is_cq = false;
+     return;
+ }
   // =====================================
 
 
