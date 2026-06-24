@@ -1,6 +1,7 @@
 #include "PollingTransceiver.hpp"
 
 #include <exception>
+#include <algorithm>
 
 #include <QObject>
 #include <QString>
@@ -8,16 +9,31 @@
 #include <QThread>
 #include <QDir>
 #include <QStandardPaths>
+#include "TransceiverFactory.hpp"
 #include "moc_PollingTransceiver.cpp"
 
 namespace
 {
   unsigned const polls_to_stabilize {3};
+  int constexpr poll_interval_mask {0x7fff};
+  int constexpr sensor_poll_interval_ms {500};
+
+  int poll_interval_ms (int poll_interval)
+  {
+    auto const configured_interval = (poll_interval & poll_interval_mask) * 1000;
+    if (poll_interval & (do__pwr | do__snr))
+      {
+        return configured_interval
+          ? std::min (configured_interval, sensor_poll_interval_ms)
+          : sensor_poll_interval_ms;
+      }
+    return configured_interval;
+  }
 }
 
 PollingTransceiver::PollingTransceiver (logger_type * logger, int poll_interval, QObject * parent)
   : TransceiverBase {logger, parent}
-  , interval_ {poll_interval * 1000}
+  , interval_ {poll_interval_ms (poll_interval)}
   , poll_timer_ {nullptr}
   , retries_ {0}
 {
@@ -54,7 +70,6 @@ void PollingTransceiver::stop_timer ()
 
 void PollingTransceiver::do_post_start ()
 {
-  interval_ = 500;  // needed for displaying PWR and SWR
   start_timer ();
   if (!next_state_.online ())
     {

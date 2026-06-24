@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QTimer>
+#include <QThread>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -1285,26 +1286,72 @@ void HamlibTransceiver::do_poll ()
 
 void HamlibTransceiver::do_ptt (bool on)
 {
-    CAT_TRACE ("PTT: " << on << " " << state () << " reversed=" << m_->reversed_);
-  if (on)
+  CAT_TRACE ("PTT: " << on << " " << state () << " reversed=" << m_->reversed_);
+  auto const can_set_ptt = RIG_PTT_NONE != m_->rig_->state.pttport.type.ptt;
+  auto const can_read_ptt = can_set_ptt && rig_get_function_ptr (m_->model_, RIG_FUNCTION_GET_PTT);
+
+  auto const requested_ptt = [this, on] () -> ptt_t {
+    if (!on)
+      {
+        return RIG_PTT_OFF;
+      }
+
+    auto ptt_type = rig_get_caps_int (m_->model_, RIG_CAPS_PTT_TYPE);
+    return RIG_PTT_RIG_MICDATA == ptt_type && m_->back_ptt_port_
+      ? RIG_PTT_ON_DATA
+      : RIG_PTT_ON;
+  } ();
+
+  auto const set_ptt = [this, requested_ptt, on] {
+    ptt_on_ = on;
+    CAT_TRACE ("rig_set_ptt PTT=" << on);
+    m_->error_check (rig_set_ptt (m_->rig_.data (), RIG_VFO_CURR, requested_ptt),
+                     on ? tr ("setting PTT on") : tr ("setting PTT off"));
+  };
+
+  auto const verify_ptt = [this, can_read_ptt, on] {
+    if (!can_read_ptt)
+      {
+        return true;
+      }
+
+    for (int attempt = 0; attempt != 3; ++attempt)
+      {
+        ptt_t p;
+        auto rc = rig_get_ptt (m_->rig_.data (), RIG_VFO_CURR, &p);
+        if (-RIG_ENAVAIL == rc || -RIG_ENIMPL == rc)
+          {
+            return true;
+          }
+
+        m_->error_check (rc, tr ("verifying PTT state"));
+        CAT_TRACE ("rig_get_ptt verify PTT=" << p);
+        if ((RIG_PTT_OFF != p) == on)
+          {
+            return true;
+          }
+
+        QThread::msleep (50);
+      }
+    return false;
+  };
+
+  if (can_set_ptt)
     {
-       if (RIG_PTT_NONE != m_->rig_->state.pttport.type.ptt)
-        {
-          ptt_on_ = true;
-          CAT_TRACE ("rig_set_ptt PTT=true");
-          auto ptt_type = rig_get_caps_int (m_->model_, RIG_CAPS_PTT_TYPE);
-          m_->error_check (rig_set_ptt (m_->rig_.data (), RIG_VFO_CURR
-                                        , RIG_PTT_RIG_MICDATA == ptt_type && m_->back_ptt_port_
-                                        ? RIG_PTT_ON_DATA : RIG_PTT_ON), tr ("setting PTT on"));
-        }
+      set_ptt ();
     }
-  else
+
+  if (can_set_ptt && !verify_ptt ())
     {
-      if (RIG_PTT_NONE != m_->rig_->state.pttport.type.ptt)
+      CAT_WARNING ("PTT verification failed after rig_set_ptt; reopening Hamlib rig and retrying");
+      rig_close (m_->rig_.data ());
+      m_->error_check (rig_open (m_->rig_.data ()), tr ("reopening connection to rig after PTT mismatch"));
+      set_ptt ();
+      if (!verify_ptt ())
         {
-          ptt_on_ = false;
-          CAT_TRACE ("rig_set_ptt PTT=false");
-          m_->error_check (rig_set_ptt (m_->rig_.data (), RIG_VFO_CURR, RIG_PTT_OFF), tr ("setting PTT off"));
+          throw error {tr ("Hamlib PTT verification failed: requested PTT %1 but rig reports %2")
+                       .arg (on ? tr ("on") : tr ("off"))
+                       .arg (on ? tr ("off") : tr ("on"))};
         }
     }
 

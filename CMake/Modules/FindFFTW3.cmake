@@ -80,7 +80,14 @@ set (_check_list)
 # Search for all requested libraries.
 foreach (_lib ${_libraries})
   string (TOUPPER ${_lib} _LIB)
-  find_library (${_LIB}_LIBRARY NAMES ${_lib} ${_lib}-3
+  set (_names ${_lib} ${_lib}-3)
+  if (WIN32 AND _lib MATCHES "^(.*)_threads$")
+    # The official FFTW Windows DLL packages export the thread API from
+    # the precision DLL itself, e.g. libfftw3f-3.dll, rather than shipping
+    # a separate libfftw3f_threads library.
+    list (APPEND _names ${CMAKE_MATCH_1} ${CMAKE_MATCH_1}-3)
+  endif ()
+  find_library (${_LIB}_LIBRARY NAMES ${_names}
     HINTS ${FFTW3_ROOT_DIR} PATH_SUFFIXES lib)
   mark_as_advanced (${_LIB}_LIBRARY)
   list (APPEND FFTW3_LIBRARIES ${${_LIB}_LIBRARY})
