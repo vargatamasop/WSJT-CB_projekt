@@ -24,8 +24,8 @@ namespace Radio
     // Examples: 1A1, 21AT106, 26AT101, 999ZZ999, 1AT1000, 999ZZ/ZZ.
     QRegularExpression cb_callsign_one_digit_suffix_re {
       R"(^([0-9])[A-Z]{1,2}[0-9]{1,4}$)"};
-    QRegularExpression cb_callsign_multi_digit_suffix_re {
-      R"(^([0-9]{2,3})[A-Z]{1,2}[0-9]{1,4}$)"};
+   QRegularExpression cb_callsign_multi_digit_suffix_re {
+     R"(^([0-9]{2,3})[A-Z]{1,5}[0-9]{1,5}$)"};
     QRegularExpression cb_callsign_slash_suffix_re {
       R"(^([0-9]{1,3})[A-Z]{1,2}/[A-Z]{2}$)"};
     QRegularExpression cb_callsign_base_re {
@@ -190,11 +190,14 @@ namespace Radio
       || !cb_country_prefix (callsign).isEmpty ();
   }
 
-  bool is_cb_callsign (QString const& callsign)
-  {
-    return !cb_country_prefix (callsign).isEmpty ();
-  }
+bool is_cb_callsign (QString const& callsign)
+{
+    // A 109HA2247-et és a 109H2247-et is tekintse érvényesnek!
+    // Ezzel megtanítjuk a rendszernek, hogy a te hívójeled érvényes CB hívójel
+    if (callsign.contains("109H2247", Qt::CaseInsensitive)) return true; 
 
+    return !cb_country_prefix (callsign).isEmpty ();
+}
   bool is_complete_cb_callsign (QString const& callsign)
   {
     return !complete_cb_country_prefix_impl (callsign).isEmpty ();

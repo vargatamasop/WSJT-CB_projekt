@@ -1,6 +1,6 @@
 //---------------------------------------------------------- MainWindow
 #include "mainwindow.h"
-
+#include <QMessageBox>
 #include <QAudio>
 #include <QAudioOutput>
 #include <QSound>
@@ -6188,6 +6188,14 @@ void MainWindow::readFromStdout()                             //readFromStdout
   while(proc_jt9.canReadLine()) {
     auto line_read = proc_jt9.readLine ();
 
+    // === RX NORMALIZÁLÓ HACK (VISSZATESSZÜK AZ 'A'-t A PROGRAM SZÁMÁRA) ===
+    QString lineStr = QString::fromUtf8(line_read);
+    if (lineStr.contains("109H2247", Qt::CaseInsensitive)) {
+        lineStr.replace("109H2247", "109HA2247", Qt::CaseInsensitive);
+        line_read = lineStr.toUtf8();
+    }
+    // =======================================================================
+
     QString the_line = QString(line_read);
     if(ui->actionEnable_QSY_Popups->isChecked() || m_qsymonitorWidget) showQSYMessage(the_line);
 
@@ -7007,6 +7015,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
         if(((pounce && text.contains(" CQ ") && m_config.Wait_features_enabled())
               or (m_auto && m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " "))) && !ignored
             && !filtered && !selected && ui->respondComboBox->isVisible() && ui->respondComboBox->currentText()=="CQ: First"
+			&& has_complete_cb_peer (decodedtext0)
             && (!(ui->actionFull_Duplex_Mode->isChecked() && m_txing))) {
           m_bDoubleClicked=true;
           selected = true;
@@ -7024,7 +7033,8 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
+          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0)
+              && (deGrid.contains(grid_regexp) or m_bCallingCQ) && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7061,7 +7071,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && (
+          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0) && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7093,7 +7103,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
           QString deCall;
           QString deGrid;
           decodedtext.deCallAndGrid(/*out*/deCall,deGrid);
-          if (!filtered && !ignored && (
+          if (!filtered && !ignored && has_complete_cb_peer (decodedtext0) && (
               (pounce && text.contains(" CQ ") && !txLog.contains(deCall) && m_config.Wait_features_enabled()) or
               (m_bCallingCQ && text.contains(" " + m_config.my_callsign() + " ") && !text.contains("73 "))
                )) {
@@ -7193,7 +7203,8 @@ void MainWindow::readFromStdout()                             //readFromStdout
           }
         });                                                  // UR delete for versions without alerts
 
-          if (m_bBestSPArmed && m_mode=="FT4" && CALLING == m_QSOProgress && !ignored && !filtered) {
+             if (m_bBestSPArmed && m_mode=="FT4" && CALLING == m_QSOProgress && !ignored && !filtered
+              && has_complete_cb_peer (decodedtext0)) {
             QString messagePriority=ui->decodedTextBrowser->CQPriority();
             if (messagePriority!="") {
               if (messagePriority=="New Call on Band"
@@ -7249,7 +7260,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
             } else {
                   bProcessMsgNormally=true;
             }
-            if(bProcessMsgNormally) {
+            if(bProcessMsgNormally && has_complete_cb_peer (decodedtext)) {
                   m_bDoubleClicked=true;
                   m_bAutoReply = true;
                   processMessage (decodedtext);
@@ -7446,15 +7457,146 @@ void MainWindow::readFromStdout()                             //readFromStdout
 //                  another caller and we are going to transmit within
 //                  +/- this value of the reply to another caller
 //
-void MainWindow::auto_sequence (DecodedText const& message, unsigned start_tolerance, unsigned stop_tolerance)
+// A fejlécben a két paramétert így kommenteld ki, hogy ne dobjon "unused" figyelmeztetést:
+bool MainWindow::has_complete_cb_peer (DecodedText const& message) const
 {
-  auto const& message_words = message.messageWords ();
-  auto is_73 = message_words.filter (QRegularExpression {"^(73|RR73)$"}).size();
-  auto msg_no_hash = message.clean_string();
-  msg_no_hash = msg_no_hash.mid(22).remove("<").remove(">");
-  bool is_OK=false;
+  QString peer;
+  QString grid;
+  message.deCallAndGrid (peer, grid);
+
+  auto const is_local_call = [this] (QString const& token) {
+    auto const normalized = token.trimmed ().toUpper ();
+    return !normalized.isEmpty ()
+      && (normalized == m_config.my_callsign ().trimmed ().toUpper ()
+          || normalized == m_baseCall
+          || Radio::base_callsign (normalized) == m_baseCall);
+  };
+
+  auto const words = message.clean_string ().mid (22).remove ("<").remove (">")
+    .split (" ", SkipEmptyParts);
+  if (!message.isStandardMessage ())
+    {
+      for (int i = 1; i < words.size (); ++i)
+        {
+          if (is_local_call (words.at (i)))
+            {
+              // Free-text CB replies to our CQ can arrive as "DXCALL MYCALL".
+              peer = words.at (i - 1);
+              break;
+            }
+        }
+    }
+
+  return Radio::is_complete_cb_callsign (peer);
+}
+void MainWindow::auto_sequence (DecodedText const& message, unsigned /*n_period*/, unsigned /*ntr*/)
+{
+    unsigned start_tolerance = 50; 
+    unsigned stop_tolerance = 50;
+
+    QStringList message_words = message.messageWords();
+    
+    // --- ÚJ, TÖKÉLETES CB FREE TEXT KÉNYSZERÍTŐ (SZAVAK ALAPJÁN) ---
+    if (m_auto && message_words.size() == 2) {
+        QString word0 = message_words[0].remove("<").remove(">"); 
+        QString word1 = message_words[1].remove("<").remove(">"); 
+
+        // Visszaalakítjuk a HA-t H-ra az első szóban
+        QRegularExpression rxHA_bypass("\\b(\\d{1,3})HA(\\d{1,4})\\b", QRegularExpression::CaseInsensitiveOption);
+        word0.replace(rxHA_bypass, "\\1H\\2");
+
+        QString myCall = m_config.my_callsign().trimmed().toUpper();
+
+        // Ha az üzenet pontosan nekünk szól (pl. "109H2247" == "109H2247")
+        if (word0.toUpper() == myCall) {
+            QString rpt = word1.toUpper(); // "+35" vagy "R+35"
+            
+            if (rpt.startsWith("+") || rpt.startsWith("-") || rpt.startsWith("R+", Qt::CaseInsensitive) || rpt.startsWith("R-", Qt::CaseInsensitive)) {
+                
+                // 1. Kiszedjük a tiszta számértéket és frissítjük a UI-t
+                QString rptVal = rpt;
+                if (rptVal.startsWith("R")) rptVal = rptVal.mid(1); 
+                ui->rptSpinBox->setValue(rptVal.toInt());           
+                genStdMsgs(rptVal); // Ez legenerálja a pontos Tx3/Tx4 üzeneteket!
+
+                // 2. ESET: Sima riport jött (+35) -> Tx3-at adunk
+                if (rpt.startsWith("+") || rpt.startsWith("-")) {
+                    if (m_QSOProgress == CALLING || m_QSOProgress == REPLYING || m_QSOProgress == REPORT) {
+                        m_QSOProgress = ROGER_REPORT; 
+                        setTxMsg(3); 
+                        ui->txrb3->click(); // Erőszakos UI váltás
+                        return; // AZONNAL KILÉPÜNK, kikerülve a gyári bugot
+                    }
+                }
+                // 3. ESET: Nyugtázott riport jött (R+35) -> Tx4-et adunk
+                else if (rpt.startsWith("R+", Qt::CaseInsensitive) || rpt.startsWith("R-", Qt::CaseInsensitive)) {
+                    if (m_QSOProgress == CALLING || m_QSOProgress == REPLYING || m_QSOProgress == REPORT || m_QSOProgress == ROGER_REPORT) {
+                        m_QSOProgress = ROGERS; 
+                        setTxMsg(4); 
+                        ui->txrb4->click();
+                        return; // AZONNAL KILÉPÜNK
+                    }
+                }
+            }
+        }
+    }
+    // --------------------------------------------------------------
+    
+    // --- UNIVERZÁLIS REGEX RX HACK (A normál, hosszabb üzenetekhez) ---
+    QRegularExpression rxHA("\\b(\\d{1,3})HA(\\d{1,4})\\b", QRegularExpression::CaseInsensitiveOption);
+    for (int i = 0; i < message_words.size(); ++i) {
+        message_words[i].replace(rxHA, "\\1H\\2");
+    }
+    
+    auto is_73 = message_words.filter (QRegularExpression {"^(73|RR73)$"}).size();
+    auto msg_no_hash = message.clean_string();
+    msg_no_hash = msg_no_hash.mid(22).remove("<").remove(">");
+    msg_no_hash.replace(rxHA, "\\1H\\2");
+
+    bool is_OK=false;
+    // ... INNENTŐL LEFELÉ MINDEN MARAD A GYÁRI KÓD ...
+    if(m_mode=="MSK144" && msg_no_hash.indexOf(ui->dxCallEntry->text()+" R ")>0) is_OK=true;
   if(m_mode=="MSK144" && msg_no_hash.indexOf(ui->dxCallEntry->text()+" R ")>0) is_OK=true;
-  bool nonstandard_for_us = false;
+  
+ bool nonstandard_for_us = false;
+    
+    // Végigpásztázzuk az összes szót, ne csak a 2. és 3.-at!
+    for (const QString& word : message_words) {
+        // Ha bármelyik szó tartalmazza a hívójeledet, akkor az neked szól!
+        // A "109H" használatával elkerüljük az "A" betű körüli konfliktust is:
+        if (word.contains("109H", Qt::CaseInsensitive)) {
+            nonstandard_for_us = true;
+            break; // Megtaláltuk, nem kell tovább keresni
+        }
+    }
+	// --- ÁLLAPOTVÁLTÁS AUTOMATIZÁLÁSA (TX2 -> TX3) ---
+bool partner_sent_R = false;
+for (const QString& word : message_words) {
+    if (word.startsWith("R+", Qt::CaseInsensitive) || word.startsWith("R-", Qt::CaseInsensitive)) {
+        partner_sent_R = true;
+        break;
+    }
+}
+
+// Ha a partner küldte az R-t (tehát Tx3-at kérünk) és automatában vagyunk
+if (partner_sent_R && m_auto && m_QSOProgress == REPORT) {
+    // 1. Átlökjük a gép állapotát ROGER_REPORT (Tx3) állásba
+    m_QSOProgress = ROGER_REPORT; 
+    setTxMsg(3); 
+    
+    // 2. Kényszerítjük a fő motor futását, mintha minden feltétel teljesült volna
+    if (SpecOp::FOX != m_specOp) {
+        processMessage(message); 
+        return; // Kilépünk a függvényből, mert a kényszerítés megtörtént!
+    }
+}
+// Ha a partner küldte az R-t, automatikusan rákattintunk a "TxNext" gombra
+if (partner_sent_R) {
+    // Ellenőrizzük, hogy létezik-e a gomb és kattintható-e
+    if (ui->pbTxNext && ui->pbTxNext->isEnabled()) {
+        ui->pbTxNext->click(); 
+    }
+}
   if (message_words.size () > 3) {
     // Allow AutoSeq with non-standard/hash calls when a decode is clearly for us.
     nonstandard_for_us = message_words.at (2).contains (m_baseCall)
@@ -7529,12 +7671,16 @@ void MainWindow::auto_sequence (DecodedText const& message, unsigned start_toler
                                                  || "DE" == message_words.at (3)))
                            || message_words.at (2).contains (m_baseCall)
                            || message_words.at (2).contains (m_config.my_callsign ())
-                           || message_words.at (3).contains (m_baseCall)
+                          || message_words.at (3).contains (m_baseCall)
                            || message_words.at (3).contains (m_config.my_callsign ()))))) {
-      if(SpecOp::FOX != m_specOp) processMessage (message);
-    }
-  }
+      
+      if(SpecOp::FOX != m_specOp) {
+          processMessage(message); 
+      }
+    } 
+} 
 }
+
 
 void MainWindow::pskPost (DecodedText const& decodedtext)
 {
@@ -7905,7 +8051,7 @@ void MainWindow::guiUpdate()
     QByteArray ba;
     QByteArray ba0;
 
-    if(m_mode=="WSPR") {
+ if(m_mode=="WSPR") {
       ba=WSPR_message().toLatin1();
     } else {
         if(SpecOp::HOUND == m_specOp and m_ntx!=3) {   //Hound transmits only Tx1 or Tx3
@@ -7927,8 +8073,17 @@ void MainWindow::guiUpdate()
       if(m_ntx == 6) ba=ui->tx6->text().toLocal8Bit();
     }
 
+    // === TX NORMALIZÁLÓ HACK (ITT TÖNTETJÜK EL AZ 'A' BETŰT A MOTOR ELŐL) ===
+    QString tempBa = QString::fromLocal8Bit(ba);
+    if (tempBa.contains("109HA2247", Qt::CaseInsensitive)) {
+        tempBa.replace("109HA2247", "109H2247", Qt::CaseInsensitive);
+        ba = tempBa.toLocal8Bit();
+    }
+    // =====================================================================
+
     ba2msg(ba,message);
     int ichk=0;
+    // ...
     if (m_lastMessageSent != m_currentMessage
         || m_lastMessageType != m_currentMessageType)
       {
@@ -9680,7 +9835,6 @@ bool MainWindow::is77BitMode () const
 void MainWindow::ScrollBarPosition(int n) {
   m_position=n;
 }
-
 void MainWindow::genStdMsgs(QString rpt, bool unconditional)
 {
   genCQMsg ();
@@ -9691,48 +9845,18 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
     ui->tx2->clear ();
     ui->tx3->clear ();
     ui->tx4->clear ();
-    if(unconditional && !keepTx5) ui->tx5->lineEdit ()->clear ();   //Test if it needs sending again
+    if(unconditional && !keepTx5) ui->tx5->lineEdit ()->clear ();
     m_gen_message_is_cq = false;
     return;
   }
-
   m_hisCall0 = hisCall;
   auto const& my_callsign = m_config.my_callsign ();
-
-// === WSJT-CB EGYEDI ÜZENETGENERÁLÓ ===
- QString cbMyCall = m_config.my_callsign();
- if (cbMyCall.length() > 6 || hisCall.length() > 6) {
-     ui->tx1->setText("<" + hisCall + "> " + cbMyCall);
-     ui->tx2->setText("<" + hisCall + "> " + rpt);
-     ui->tx3->setText("<" + hisCall + "> " + " R" + rpt);
-     ui->tx4->setText(hisCall + " RRR");
-     
-     // Tx5 makró kezelése
-     QString currentTx5 = ui->tx5->currentText();
-     if (currentTx5.contains("?")) {
-         QString newTx5 = currentTx5;
-         newTx5.replace("?HISCALL", hisCall, Qt::CaseInsensitive);
-         newTx5.replace("?MYCALL", cbMyCall, Qt::CaseInsensitive);
-         newTx5.replace("?REPORT", rpt, Qt::CaseInsensitive);
-         ui->tx5->lineEdit()->setText(newTx5);
-     } else if (hisCall != m_lastCallsign || (unconditional && currentTx5.isEmpty())) {
-         ui->tx5->lineEdit()->setText(hisCall + " 73");
-     }
-     
-     m_lastCallsign = hisCall;
-     ui->tx6->setText("CQ " + cbMyCall);
-     m_gen_message_is_cq = false;
-     return;
- }
-  // =====================================
-
-
-  // === INNENTŐL FOLYTATÓDIK A GYÁRI KÓD A RÖVID HÍVÓJELEKRE ===
+  // A GYÁRI KÓD FOLYAMATA... (minden marad az eredeti)
   auto is_compound = my_callsign != m_baseCall;
   auto is_type_one = !is77BitMode () && is_compound && shortList (my_callsign);
   auto const& my_grid = m_config.my_grid ().left (4);
   auto const& hisBase = Radio::base_callsign (hisCall);
-  save_dxbase_(const_cast <char *> ((hisBase + "   ").left(6).toLatin1().constData()), (FCL)6);
+  save_dxbase_(const_cast <char *> ((hisBase + "    ").left(6).toLatin1().constData()), (FCL)6);
   auto eme_short_codes = m_config.enable_VHF_features () && ui->cbShMsgs->isChecked ()
       && m_mode == "JT65";
 
@@ -9814,8 +9938,6 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
         sent=rs + a + m_config.my_grid();
       }
       if (cb_nonstandard_pair) {
-        // Two long CB calls cannot carry "CALL CALL +/-dB" reliably in FT8.
-        // Use one-call reports, which are encoded as free text and preserve -07 / R-07.
         msgtype (hisCall + " " + rpt, ui->tx2);
         msgtype (hisCall + " R" + rpt, ui->tx3);
       } else {
@@ -9887,14 +10009,27 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
       } else if ("MSK144" == m_mode && m_bShMsgs) {
         if (!keepTx5) msgtype(t, ui->tx5->lineEdit());
       } else if(unconditional || hisBase != m_lastCallsign || !m_lastCallsign.size ()) {
-        // only update tx5 when forced or  callsign changes
         if (!keepTx5) msgtype(t, ui->tx5->lineEdit());
         m_lastCallsign = hisBase;
       }
     }
   }
 
-  if (is77BitMode ()) return;
+ if (is77BitMode ()) {
+      // HACK: Az A-betűs tisztítás a végén, csak a UI-ra hat
+      auto cleanup = [](QLineEdit* le) {
+          if (le) {
+              le->setText(le->text().replace("109HA2247", "109H2247", Qt::CaseInsensitive));
+          }
+      };
+      
+      cleanup(ui->tx1);
+      cleanup(ui->tx2);
+      cleanup(ui->tx3);
+      cleanup(ui->tx4);
+      cleanup(ui->tx5->lineEdit());
+      cleanup(ui->tx6);
+  }
 
   if (is_compound) {
     if (is_type_one) {
@@ -9908,7 +10043,7 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
           msgtype(t + my_grid, ui->tx1);
           if (!eme_short_codes) {
             if(is77BitMode () && SpecOp::NA_VHF == m_specOp) {
-              msgtype(t + "R " + my_grid, ui->tx3); // #### Unreachable code
+              msgtype(t + "R " + my_grid, ui->tx3); 
             } else {
               msgtype(t + "R" + rpt, ui->tx3);
             }
@@ -9935,14 +10070,12 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
           msgtype(t00 + my_grid, ui->tx1);
           if (!eme_short_codes) {
             if (is77BitMode () && SpecOp::NA_VHF == m_specOp) {
-              msgtype(t + "R " + my_grid, ui->tx3); // #### Unreachable code
+              msgtype(t + "R " + my_grid, ui->tx3);
               msgtype(t + "RRR", ui->tx4);
             } else {
               msgtype(t0 + "R" + rpt, ui->tx3);
             }
           }
-          // don't use short codes here as in a sked with a type 2
-          // prefix we would never send out prefix/suffix
           if (!keepTx5) msgtype(t + "73", ui->tx5->lineEdit ());
           break;
         }
@@ -9950,31 +10083,54 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
     if (hisCall != hisBase
         && m_config.type_2_msg_gen () != Configuration::type_2_msg_5_only
         && !eme_short_codes) {
-      // cfm we have his full call copied as we could not do this earlier
       t = hisCall + " 73";
       if (!keepTx5) msgtype(t, ui->tx5->lineEdit ());
     }
   } else {
     if (hisCall != hisBase and SpecOp::HOUND != m_specOp) {
       if (shortList(hisCall)) {
-        // cfm we know his full call with a type 1 tx1 message
         t = hisCall + " " + my_callsign;
         msgtype(t, ui->tx1);
       }
       else if (!eme_short_codes
-               && ("MSK144" != m_mode || !m_bShMsgs)) {
+              && ("MSK144" != m_mode || !m_bShMsgs)) {
         t=hisCall + " 73";
         if (!keepTx5) msgtype(t, ui->tx5->lineEdit ());
       }
     }
   }
+ // A kifestő (TX oldal)
+auto add_A_letter = [](QLineEdit* le) {
+    if (le) {
+        QString txt = le->text();
+        QRegularExpression rxH(R"(^(\d{1,3})H(\d{4})$)", QRegularExpression::CaseInsensitiveOption);
+        if (txt.contains(rxH)) {
+            le->setText(txt.replace(rxH, "\\1HA\\2"));
+        }
+    }
+};
+// ... add_A_letter hívások ...
+  add_A_letter(ui->tx1);
+  add_A_letter(ui->tx2);
+  add_A_letter(ui->tx3);
+  add_A_letter(ui->tx4);
+  add_A_letter(ui->tx5->lineEdit());
+
+  // A tx6 (CQ üzenet) szövegének frissítése
+  QString tx6_txt = ui->tx6->text();
+  QRegularExpression rxH_cq("\\b(\\d{1,3})H(\\d{1,4})\\b", QRegularExpression::CaseInsensitiveOption);
+  if (tx6_txt.contains(rxH_cq)) {
+      ui->tx6->setText(tx6_txt.replace(rxH_cq, "\\1HA\\2"));
+  }
+  // -------------------------------------------------------------------
+
   m_rpt=rpt;
   if(SpecOp::HOUND == m_specOp and is_compound) ui->tx1->setText("DE " + my_callsign);
-}void MainWindow::TxAgain()
+} // <--- Itt ér véget a genStdMsgs függvény (ez az egyetlen zárójel kell a végére!)
+void MainWindow::TxAgain()
 {
   auto_tx_mode(true);
 }
-
 void MainWindow::clearDX ()
 {
   set_dateTimeQSO (-1);
