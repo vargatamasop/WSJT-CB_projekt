@@ -6222,25 +6222,44 @@ void MainWindow::readFromStdout()                             //readFromStdout
  while(proc_jt9.canReadLine()) {
         auto line_read = proc_jt9.readLine ();
 
-        // === RX NORMALIZÁLÓ HACK (Regex-es csere: 109H2247 -> 109HA2247) ===
+      // === UNIVERZÁLIS DINAMIKUS RX VISSZAFEJTÉS ===
         QString lineStr = QString::fromUtf8(line_read);
-        
-        // Magyarázat:
-        // \b     = Szóhatár (hogy biztosan csak önálló hívójeleket találjon meg)
-        // (\d+)  = Elkapja az első számsorozatot (ezt lesz a \1)
-        // H      = Az 'H' betű, amit keresünk
-        // (\d+)  = Elkapja a második számsorozatot (ez lesz a \2)
-        // \b     = Szóhatár
-        QRegularExpression rxHA("\\b(\\d+)H(\\d+)\\b", QRegularExpression::CaseInsensitiveOption);
-        
-        if (lineStr.contains(rxHA)) {
-            lineStr.replace(rxHA, "\\1HA\\2");
-            line_read = lineStr.toUtf8();
+
+        // Segédfüggvény a rövidítés kiszámításához (pl. 109LR1234 -> 109L1234)
+        auto shortenCBCall = [](const QString& call) -> QString {
+            QRegularExpression rx("^(\\d{1,3})([A-Z])[A-Z](\\d{1,4})$", QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatch match = rx.match(call);
+            if (match.hasMatch()) {
+                return match.captured(1) + match.captured(2).toUpper() + match.captured(3);
+            }
+            return call;
+        };
+
+        // 1. Saját hívójelünk visszabővítése a kijelzőn
+        QString myCall = m_config.my_callsign();
+        QString myShortCall = shortenCBCall(myCall);
+        if (myCall != myShortCall && lineStr.contains(myShortCall, Qt::CaseInsensitive)) {
+            // Szóhatár (\b) használata, hogy pontosan a hívójelet cseréljük
+            QRegularExpression rxMy("\\b" + myShortCall + "\\b", QRegularExpression::CaseInsensitiveOption);
+            lineStr.replace(rxMy, myCall);
         }
+
+        // 2. A kiválasztott partner (dxCallEntry) hívójelének visszabővítése
+        QString targetCall = ui->dxCallEntry->text();
+        if (!targetCall.isEmpty()) {
+            QString targetShortCall = shortenCBCall(targetCall);
+            if (targetCall != targetShortCall && lineStr.contains(targetShortCall, Qt::CaseInsensitive)) {
+                QRegularExpression rxTarget("\\b" + targetShortCall + "\\b", QRegularExpression::CaseInsensitiveOption);
+                lineStr.replace(rxTarget, targetCall);
+            }
+        }
+
+        // A módosított sort visszaadjuk a rendszernek feldolgozásra
+        line_read = lineStr.toUtf8();
         // ===================================================================
 
         QString the_line = QString(line_read);
-        // ... itt folytatódik a további kódod
+        // ... itt folytatódik a további kódod ...
     if(ui->actionEnable_QSY_Popups->isChecked() || m_qsymonitorWidget) showQSYMessage(the_line);
 
     if (m_mode == "FT8" and m_specOp == SpecOp::FOX and m_ActiveStationsWidget != NULL) { // see if we should add this to ActiveStations window
@@ -7546,56 +7565,107 @@ void MainWindow::auto_sequence (DecodedText const& message, unsigned start_toler
 
   QStringList message_words = message.messageWords();
   
-  // --- NORMALIZÁLÁS (A motor számára H, a UI-nak HA) ---
-  QRegularExpression rxHA("\\b(\\d{1,3})HA(\\d{1,4})\\b", QRegularExpression::CaseInsensitiveOption);
+  // --- 1. UNIVERZÁLIS DINAMIKUS VISSZAFEJTÉS ---
+  QString targetCall = ui->dxCallEntry->text();
+  QString myBaseCall = m_baseCall;
+  QString myCall = m_config.my_callsign();
 
+  // Ez a kis segédfüggvény megcsinálja a 4 digites 2 betűs hívójelek rövidítését (pl. 109LE1234 -> 109L1234)
+  auto shortenCBCall = [](const QString& call) -> QString {
+      QRegularExpression rx("^(\\d{1,3})([A-Z])[A-Z](\\d{1,4})$", QRegularExpression::CaseInsensitiveOption);
+      QRegularExpressionMatch match = rx.match(call);
+      if (match.hasMatch()) {
+          return match.captured(1) + match.captured(2).toUpper() + match.captured(3);
+      }
+      return call;
+  };
+
+  QString targetShortCall = shortenCBCall(targetCall);
+  QString myShortCall = shortenCBCall(myBaseCall);
+
+  // Végigmegyünk a bejövő üzenet szavain, és VISSZAÍRJUK a teljes formára
   for (int i = 0; i < message_words.size(); ++i) {
-      message_words[i].replace(rxHA, "\\1H\\2");
+      if (targetCall != targetShortCall && message_words[i] == targetShortCall) {
+          message_words[i] = targetCall;
+      }
+      if (myBaseCall != myShortCall && message_words[i] == myShortCall) {
+          message_words[i] = myBaseCall;
+      }
   }
 
-  // Normalizált célhívójel a belső logikához
-  QString targetCall = ui->dxCallEntry->text();
-  targetCall.replace(rxHA, "\\1H\\2");
-
-  auto msg_no_hash = message.clean_string();
-  msg_no_hash = msg_no_hash.mid(22).remove("<").remove(">");
-  msg_no_hash.replace(rxHA, "\\1H\\2"); 
+  QString msg_no_hash = message_words.join(" ");
   // -----------------------------------------------------
 
-  auto is_73 = message_words.filter (QRegularExpression {"^(73|RR73)$"}).size();
+  // === 2. CB FREE TEXT (2 SZAVAS) ÁLLAPOTGÉP HACK ===
+  bool is_cb_msg = false;
+  bool has_report = false;
+  bool has_roger_report = false;
+  bool has_73 = false;
+  QString extracted_report = "";
 
+  for (const QString& w : message_words) {
+      if (w == targetCall || w == myBaseCall || w == myCall) {
+          is_cb_msg = true;
+      }
+  }
+
+  if (is_cb_msg) {
+      for (const QString& w : message_words) {
+          if (w.startsWith("+") || w.startsWith("-")) {
+              has_report = true;      
+              extracted_report = w;
+          } else if (w.startsWith("R+") || w.startsWith("R-")) {
+              has_roger_report = true; 
+              extracted_report = w.mid(1); // 'R' levágása
+          } else if (w == "RR73" || w == "73" || w == "RRR") {
+              has_73 = true;           
+          }
+      }
+  }
+
+  if (m_auto && is_cb_msg) {
+      if (has_report && m_QSOProgress <= REPLYING) { 
+          m_rptRcvd = extracted_report;                  
+          genStdMsgs(QString::number(message.snr()));    
+          m_QSOProgress = REPORT;                        
+          setTxMsg(3);                                   
+          if (SpecOp::FOX != m_specOp) {
+              processMessage(message);
+              return; 
+          }
+      }
+      else if (has_roger_report && m_QSOProgress <= REPORT) {
+          m_rptRcvd = extracted_report;
+          genStdMsgs(QString::number(message.snr())); 
+          m_QSOProgress = ROGER_REPORT; 
+          setTxMsg(4);
+          if (SpecOp::FOX != m_specOp) {
+              processMessage(message);
+              return;
+          }
+      }
+      else if (has_73 && m_QSOProgress <= ROGER_REPORT) {
+          m_QSOProgress = ROGER_REPORT;
+          setTxMsg(5);
+          if (SpecOp::FOX != m_specOp) {
+              processMessage(message);
+              return;
+          }
+      }
+  }
+  // ===================================================
+
+  // --- EZEKET A VÁLTOZÓKAT HIÁNYOLTA A FORDÍTÓ! ---
+  auto is_73 = message_words.filter (QRegularExpression {"^(73|RR73)$"}).size();
+  
   bool is_OK = false;
   if(m_mode=="MSK144" && msg_no_hash.indexOf(targetCall+" R ")>0) is_OK=true;
 
   bool nonstandard_for_us = false;
-  for (const QString& word : message_words) {
-      if (word.contains("109H", Qt::CaseInsensitive)) {
-          nonstandard_for_us = true;
-          break;
-      }
-  }
+  // ------------------------------------------------
 
-  // --- ÁLLAPOTVÁLTÁS AUTOMATIZÁLÁSA ---
-  bool partner_sent_R = false;
-  for (const QString& word : message_words) {
-      if (word.startsWith("R+", Qt::CaseInsensitive) || word.startsWith("R-", Qt::CaseInsensitive)) {
-          partner_sent_R = true;
-          break;
-      }
-  }
-
-  if (partner_sent_R && m_auto && m_QSOProgress == REPORT) {
-      m_QSOProgress = ROGER_REPORT; 
-      setTxMsg(3); 
-      if (SpecOp::FOX != m_specOp) {
-          processMessage(message); 
-          return; 
-      }
-  }
-  if (partner_sent_R && ui->pbTxNext && ui->pbTxNext->isEnabled()) ui->pbTxNext->click(); 
-  // ------------------------------------
-  
   if (message_words.size () > 3) {
+  // ... innen folytatódik tovább az eredeti WSJT-X kódod a fájl végéig!
     nonstandard_for_us = message_words.at (2).contains (m_baseCall)
       || message_words.at (2).contains (m_config.my_callsign ())
       || message_words.at (3).contains (m_baseCall)
