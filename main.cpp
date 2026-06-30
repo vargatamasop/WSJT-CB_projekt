@@ -52,6 +52,12 @@
 #include "models/FrequencyList.hpp"
 #include "widgets/SplashScreen.hpp"
 #include "widgets/MessageBox.hpp"       // last to avoid nasty MS macro definitions
+#include <QDebug>
+#include <QFile>
+#include <QTextStream>
+#include <windows.h>
+#undef MessageBox
+#include <cstdio>
 
 extern "C" {
   // Fortran procedures we need
@@ -102,9 +108,18 @@ namespace
       }
   }
 }
-
+void myMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
+    QFile file("debug.txt");
+    file.open(QIODevice::WriteOnly | QIODevice::Append);
+    QTextStream ts(&file);
+    ts << msg << endl;
+}
 int main(int argc, char *argv[])
 {
+	//AllocConsole();
+    //freopen("CONOUT$", "w", stdout);
+    //freopen("CONOUT$", "w", stderr);
+  qInstallMessageHandler(myMessageHandler);
   init_random_seed ();
 
   // make the Qt type magic happen

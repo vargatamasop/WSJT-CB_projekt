@@ -113,7 +113,7 @@
 #include "widgets/QSYMessage.h"
 #include "widgets/QSYMessageCreator.h"
 #include "widgets/qsymonitor.h"
-
+#include <iostream>
 #define FCL fortran_charlen_t
 
 extern "C" {
@@ -6224,7 +6224,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
 
       // === UNIVERZÁLIS DINAMIKUS RX VISSZAFEJTÉS ===
         QString lineStr = QString::fromUtf8(line_read);
-
+     /*
         // Segédfüggvény a rövidítés kiszámításához (pl. 109LR1234 -> 109L1234)
         auto shortenCBCall = [](const QString& call) -> QString {
             QRegularExpression rx("^(\\d{1,3})([A-Z])[A-Z](\\d{1,4})$", QRegularExpression::CaseInsensitiveOption);
@@ -6257,7 +6257,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
         // A módosított sort visszaadjuk a rendszernek feldolgozásra
         line_read = lineStr.toUtf8();
         // ===================================================================
-
+*/
         QString the_line = QString(line_read);
         // ... itt folytatódik a további kódod ...
     if(ui->actionEnable_QSY_Popups->isChecked() || m_qsymonitorWidget) showQSYMessage(the_line);
@@ -7895,7 +7895,8 @@ void MainWindow::guiUpdate()
   static char message[38];
   static char msgsent[38];
   double txDuration;
-
+  QString fullTxMsg; // <--- EZT AZ EGY SORT ADD HOZZÁ ITT! 
+ 
   if(m_TRperiod==0) m_TRperiod=60.0;
   txDuration=tx_duration(m_mode,m_TRperiod,m_nsps,m_bFast9);
   if(m_mode=="FT8" and m_specOp==SpecOp::FOX and m_config.superFox()) txDuration=1.0+151*1024.0/12000.0;
@@ -8107,17 +8108,15 @@ void MainWindow::guiUpdate()
     }
   }
 
-
-  // Calculate Tx tones when needed
+// Calculate Tx tones when needed
   if((g_iptt==1 && m_iptt0==0) || m_restart) {
 //----------------------------------------------------------------------
-    QByteArray ba;
-    QByteArray ba0;
-
+    QString txString;
     if(m_mode=="WSPR") {
-      ba=WSPR_message().toLatin1();
+      
+      txString = WSPR_message();
     } else {
-        if(SpecOp::HOUND == m_specOp and m_ntx!=3) {   //Hound transmits only Tx1 or Tx3
+      if(SpecOp::HOUND == m_specOp and m_ntx!=3) {
         m_ntx=1;
         ui->txrb1->setChecked(true);
       }
@@ -8128,30 +8127,40 @@ void MainWindow::guiUpdate()
         ui->pbBestSP->setStyleSheet ("");
       }
 
-      if(m_ntx == 1) ba=ui->tx1->text().toLocal8Bit();
-      if(m_ntx == 2) ba=ui->tx2->text().toLocal8Bit();
-      if(m_ntx == 3) ba=ui->tx3->text().toLocal8Bit();
-      if(m_ntx == 4) ba=ui->tx4->text().toLocal8Bit();
-     if(m_ntx == 5) ba=ui->tx5->currentText().toLocal8Bit();
-      if(m_ntx == 6) ba=ui->tx6->text().toLocal8Bit();
+      if(m_ntx == 1) txString=ui->tx1->text();
+      if(m_ntx == 2) txString=ui->tx2->text();
+      if(m_ntx == 3) txString=ui->tx3->text();
+      if(m_ntx == 4) txString=ui->tx4->text();
+      if(m_ntx == 5) txString=ui->tx5->currentText();
+      if(m_ntx == 6) txString=ui->tx6->text();
     }
 
-    // === TX NORMALIZÁLÓ HACK (HA -> H konvertálás a motor felé) ===
-    QString tempBa = QString::fromLocal8Bit(ba);
-    
-    // Regex magyarázata:
-    // (\\d+)  -> Elkapja az első számsorozatot (ezt lesz a \1)
-    // HA      -> A fix karakterek, amiket keresünk
-    // (\\d+)  -> Elkapja a második számsorozatot (ez lesz a \2)
-    QRegularExpression rxHA("(\\d+)HA(\\d+)", QRegularExpression::CaseInsensitiveOption);
-    
-    if (tempBa.contains(rxHA)) {
-        tempBa.replace(rxHA, "\\1H\\2");
-        ba = tempBa.toLocal8Bit();
-    }
-    // =====================================================================
+    // ELMENTJÜK A TELJES SZÖVEGET A GUI SZÁMÁRA
+    fullTxMsg = txString; 
 
+    // ELKÉSZÍTJÜK A CSONKOLT VERZIÓT KIZÁRÓLAG A RÁDIÓNAK
+    QString truncatedMsg = txString;
+    QRegularExpression rxUniversal("\\b(\\d{1,3})([A-Z])[A-Z](\\d{1,})\\b", QRegularExpression::CaseInsensitiveOption);
+    truncatedMsg.replace(rxUniversal, "\\1\\2\\3");
+    
+    QByteArray ba = truncatedMsg.toLocal8Bit(); // A rádió a csonkoltat kapja
     ba2msg(ba,message);
+
+    // ... [Innentől a meglévő kódod jön: int ichk=0; if (m_lastMessageSent != m_currentMessage)... ]
+    // ... [Hagyd meg a gen4_, gen9_, genft8_ stb. gyári hívásokat, hadd fussanak le!] ...	    
+
+std::cout << "DEBUG TX motor (ami adásba megy): " << ba.constData() << std::endl;
+    // --- NYERS BÁJT-SZINTŰ DEBUG ---
+std::cout << "--- ADAT KÜLDVE A TX MOTORNAK ---" << std::endl;
+std::cout << "Karakterek: " << ba.constData() << std::endl;
+std::cout << "Hexa kódok: ";
+for(int i = 0; i < ba.size(); i++) {
+    // Kiírjuk a bájtokat hexadecimálisan
+    printf("%02X ", (unsigned char)ba.at(i));
+}
+std::cout << std::endl;
+std::cout << "----------------------------------" << std::endl;
+// -------------------------------
     int ichk=0;
     if (m_lastMessageSent != m_currentMessage
         || m_lastMessageType != m_currentMessageType)
@@ -8331,10 +8340,10 @@ void MainWindow::guiUpdate()
       m_currentMessage = "TUNE";
       m_currentMessageType = -1;
     }
-    if(m_restart) {
-      write_all("Tx",m_currentMessage);
+  if(m_restart) {
+      write_all("Tx", fullTxMsg); // <--- MÓDOSÍTVA (m_currentMessage helyett)
       if (m_config.TX_messages () and m_mode!="Echo") {
-        ui->decodedTextBrowser2->displayTransmittedText(m_currentMessage.trimmed(),m_mode,
+        ui->decodedTextBrowser2->displayTransmittedText(fullTxMsg.trimmed(),m_mode, // <--- MÓDOSÍTVA
                      ui->TxFreqSpinBox->value(),m_bFastMode,m_TRperiod,m_config.superFox());
         }
     }
@@ -8454,10 +8463,10 @@ void MainWindow::guiUpdate()
 
     if (m_mode != "FST4W" && m_mode != "WSPR" && m_mode!="Echo")
       {
-        if(!m_tune) write_all("Tx",m_currentMessage);
+        if(!m_tune) write_all("Tx", fullTxMsg); // <--- MÓDOSÍTVA: Itt m_currentMessage helyett fullTxMsg
         if (m_config.TX_messages () && !m_tune && SpecOp::FOX!=m_specOp)
           {
-            ui->decodedTextBrowser2->displayTransmittedText(current_message.trimmed(),
+            ui->decodedTextBrowser2->displayTransmittedText(fullTxMsg.trimmed(), // <--- MÓDOSÍTVA: current_message helyett fullTxMsg
                   m_mode,ui->TxFreqSpinBox->value(),m_bFastMode,m_TRperiod,m_config.superFox());
           }
       }
@@ -9810,6 +9819,7 @@ void MainWindow::setTxMsg(int n)
 void MainWindow::genCQMsg ()
 {
   auto const& my_callsign = m_config.my_callsign ();
+  std::cout << "DEBUG: genCQMsg fut, my_callsign: " << my_callsign.toStdString() << std::endl;
   auto is_compound = my_callsign != m_baseCall;
   auto is_type_two = !is77BitMode () && is_compound && stdCall (m_baseCall) && !shortList (my_callsign);
   if(my_callsign.size () && m_config.my_grid().size ()) {
@@ -9919,13 +9929,16 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
     m_gen_message_is_cq = false;
     return;
   }
-  m_hisCall0 = hisCall;
+	std::cout << "DEBUG: genStdMsgs elindult!" << std::endl;
+    std::cout << "DX Call: " << ui->dxCallEntry->text().toStdString() << std::endl;
+	
+ m_hisCall0 = hisCall;
   auto const& my_callsign = m_config.my_callsign ();
   auto is_compound = my_callsign != m_baseCall;
   auto is_type_one = !is77BitMode () && is_compound && shortList (my_callsign);
   auto const& my_grid = m_config.my_grid ().left (4);
   auto const& hisBase = Radio::base_callsign (hisCall);
-  save_dxbase_(const_cast <char *> ((hisBase + "   ").left(6).toLatin1().constData()), (FCL)6);
+  save_dxbase_(const_cast <char *> ((hisBase + "    ").left(6).toLatin1().constData()), (FCL)6);
   auto eme_short_codes = m_config.enable_VHF_features () && ui->cbShMsgs->isChecked ()
       && m_mode == "JT65";
 
@@ -10087,129 +10100,13 @@ void MainWindow::genStdMsgs(QString rpt, bool unconditional)
     }
   }
 
-if (is77BitMode ()) {
-      // HACK: Regex alapú tisztítás a UI számára (HA -> H)
-      auto cleanup = [](QLineEdit* le) {
-          if (le) {
-              // A regex dinamikusan keresi a minta: szám + HA + szám
-              // A \\1 és \\2 megtartja a számokat, de az 'A' betű eltűnik
-              QRegularExpression rx("(\\d+)HA(\\d+)", QRegularExpression::CaseInsensitiveOption);
-              le->setText(le->text().replace(rx, "\\1H\\2"));
-          }
-      };
-      
-      cleanup(ui->tx1);
-      cleanup(ui->tx2);
-      cleanup(ui->tx3);
-      cleanup(ui->tx4);
-      cleanup(ui->tx5->lineEdit());
-      cleanup(ui->tx6);
-  }
-
-  if (is_compound) {
-      // ... itt folytatódik az eredeti kód ...
-    if (is_type_one) {
-      t=hisBase + " " + my_callsign;
-      msgtype(t, ui->tx1);
-    } else {
-      t = "DE " + my_callsign + " ";
-      switch (m_config.type_2_msg_gen ())
-        {
-        case Configuration::type_2_msg_1_full:
-          msgtype(t + my_grid, ui->tx1);
-          if (!eme_short_codes) {
-            if(is77BitMode () && SpecOp::NA_VHF == m_specOp) {
-              msgtype(t + "R " + my_grid, ui->tx3); // #### Unreachable code
-            } else {
-              msgtype(t + "R" + rpt, ui->tx3);
-            }
-            if ((m_mode != "JT4" && m_mode != "Q65") || !m_bShMsgs) {
-              if (!keepTx5) msgtype(t + "73", ui->tx5->lineEdit ());
-            }
-          }
-          break;
-
-        case Configuration::type_2_msg_3_full:
-          if (is77BitMode () && SpecOp::NA_VHF == m_specOp) {
-            msgtype(t + "R " + my_grid, ui->tx3);
-            msgtype(t + "RRR", ui->tx4);
-          } else {
-            msgtype(t00 + my_grid, ui->tx1);
-            msgtype(t + "R" + rpt, ui->tx3);
-          }
-          if (!eme_short_codes && ((m_mode != "JT4" && m_mode != "Q65") || !m_bShMsgs)) {
-            if (!keepTx5) msgtype(t + "73", ui->tx5->lineEdit ());
-          }
-          break;
-
-        case Configuration::type_2_msg_5_only:
-          msgtype(t00 + my_grid, ui->tx1);
-          if (!eme_short_codes) {
-            if (is77BitMode () && SpecOp::NA_VHF == m_specOp) {
-              msgtype(t + "R " + my_grid, ui->tx3); // #### Unreachable code
-              msgtype(t + "RRR", ui->tx4);
-            } else {
-              msgtype(t0 + "R" + rpt, ui->tx3);
-            }
-          }
-          // don't use short codes here as in a sked with a type 2
-          // prefix we would never send out prefix/suffix
-          if (!keepTx5) msgtype(t + "73", ui->tx5->lineEdit ());
-          break;
-        }
-    }
-    if (hisCall != hisBase
-        && m_config.type_2_msg_gen () != Configuration::type_2_msg_5_only
-        && !eme_short_codes) {
-      // cfm we have his full call copied as we could not do this earlier
-      t = hisCall + " 73";
-      if (!keepTx5) msgtype(t, ui->tx5->lineEdit ());
-    }
-  } else {
-    if (hisCall != hisBase and SpecOp::HOUND != m_specOp) {
-      if (shortList(hisCall)) {
-        // cfm we know his full call with a type 1 tx1 message
-        t = hisCall + " " + my_callsign;
-        msgtype(t, ui->tx1);
-      }
-      else if (!eme_short_codes
-               && ("MSK144" != m_mode || !m_bShMsgs)) {
-        t=hisCall + " 73";
-        if (!keepTx5) msgtype(t, ui->tx5->lineEdit ());
-      }
-    }
-  }
-  
-    // A kifestő (TX oldal) - UI-szintű "A" betű visszahelyezés
-    // Ezzel a megoldással nem kell külön írni a tx6-hoz, a lambda megold mindent.
-    auto add_A_letter = [](QLineEdit* le) {
-        if (le) {
-            QString txt = le->text();
-            // A regex: ^(\d{1,3})H(\d{1,4})$ 
-            // Megkeresi a "szám-H-szám" formátumot és "szám-HA-szám"-ra cseréli
-            QRegularExpression rxH(R"(^(\d{1,3})H(\d{1,4})$)", QRegularExpression::CaseInsensitiveOption);
-            if (txt.contains(rxH)) {
-                le->setText(txt.replace(rxH, "\\1HA\\2"));
-            }
-        }
-    };
-
-    // A frissítés az összes mezőn
-    add_A_letter(ui->tx1);
-    add_A_letter(ui->tx2);
-    add_A_letter(ui->tx3);
-    add_A_letter(ui->tx4);
-    add_A_letter(ui->tx5->lineEdit());
-    add_A_letter(ui->tx6); 
-
-    m_rpt=rpt;
-    if(SpecOp::HOUND == m_specOp and is_compound) ui->tx1->setText("DE " + my_callsign);
-} // <--- Itt ér véget a genStdMsgs függvény
+  m_rpt=rpt;
+  if(SpecOp::HOUND == m_specOp and is_compound) ui->tx1->setText("DE " + my_callsign);
+}
 void MainWindow::TxAgain()
 {
-  auto_tx_mode(true);
+    auto_tx_mode(true);
 }
-
 void MainWindow::clearDX ()
 {
   set_dateTimeQSO (-1);
@@ -10398,6 +10295,7 @@ void MainWindow::on_ignoreButton_clicked()                    //Ignore button
 void MainWindow::msgtype(QString t, QLineEdit* tx)               //msgtype()
 {
 // Set background colors of the Tx message boxes, depending on message type
+  std::cout << "DEBUG msgtype - Kiírandó: " << t.toStdString() << std::endl;
   char message[38];
   char msgsent[38];
   QByteArray s=t.toUpper().toLocal8Bit();
@@ -10417,7 +10315,7 @@ void MainWindow::msgtype(QString t, QLineEdit* tx)               //msgtype()
     int i0=t.trimmed().length()-7;
     if(t.mid(i0,3)==" R ") text=false;
   }
-  text=false;
+ // text=false;
 //### ... to here ...
 
 
@@ -10449,6 +10347,7 @@ void MainWindow::on_tx1_editingFinished()                       //tx1 edited
   }
   QString t=ui->tx1->text();
   msgtype(t, ui->tx1);
+std::cout << "DEBUG: on_tx1_editingFinished lefutott!" << std::endl;
 }
 
 void MainWindow::on_tx2_editingFinished()                       //tx2 edited

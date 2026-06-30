@@ -152,6 +152,7 @@ private:
   void childEvent(QChildEvent *) override;
   bool eventFilter(QObject *, QEvent *) override;
   void showQSYMessage(QString message);
+  QString applyTruncation(QString callsign);
 
 private slots:
   void initialize_fonts ();

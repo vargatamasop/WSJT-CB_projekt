@@ -61,6 +61,7 @@ namespace Radio
   bool is_77bit_nonstandard_callsign (QString const&);
   QString UDP_EXPORT base_callsign (QString);
   QString UDP_EXPORT effective_prefix (QString);
+  QString normalizeCBCallsign(QString callsign);
 }
 
 Q_DECLARE_METATYPE (Radio::Frequency);
